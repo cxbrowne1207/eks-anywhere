@@ -2137,21 +2137,24 @@ func TestVSphereKubernetes123to124UpgradeFromLatestMinorReleaseBottleRocketAPI(t
 		),
 		provider.WithBottleRocketForRelease(release, v1alpha1.Kube123),
 	)
+
 	test := framework.NewMulticlusterE2ETest(t, managementCluster)
-	test.WithWorkloadClusters(
-		framework.NewClusterE2ETest(
-			t, provider, framework.WithClusterName(test.NewWorkloadClusterName()),
-		).WithClusterConfig(
-			api.ClusterToConfigFiller(
-				api.WithKubernetesVersion(v1alpha1.Kube123),
-				api.WithManagementCluster(managementCluster.ClusterName),
-			),
-			api.VSphereToConfigFiller(
-				api.WithOsFamilyForAllMachines(v1alpha1.Bottlerocket),
-			),
-			provider.WithBottleRocketForRelease(release, v1alpha1.Kube123),
-		),
+	wc := framework.NewClusterE2ETest(
+		t, provider, framework.WithClusterName(test.NewWorkloadClusterName()),
 	)
+	wc.GenerateClusterConfigForVersion(release.Version, framework.ExecuteWithEksaRelease(release))
+	wc.UpdateClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithKubernetesVersion(v1alpha1.Kube123),
+			api.WithManagementCluster(managementCluster.ClusterName),
+		),
+		api.VSphereToConfigFiller(
+			api.WithOsFamilyForAllMachines(v1alpha1.Bottlerocket),
+		),
+		provider.WithBottleRocketForRelease(release, v1alpha1.Kube123),
+	)
+	
+	test.WithWorkloadClusters(wc)
 
 	runMulticlusterUpgradeFromReleaseFlowAPI(
 		test,

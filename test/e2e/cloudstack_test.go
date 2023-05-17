@@ -1084,6 +1084,43 @@ func TestCloudStackMulticlusterWorkloadClusterAPI(t *testing.T) {
 	test.DeleteManagementCluster()
 }
 
+func TestCloudStackKubernetesRedHat123UpgradeFromLatestMinorReleaseAPI(t *testing.T) {
+	release := latestMinorRelease(t)
+	cloudstack := framework.NewCloudStack(t)
+	managementCluster := framework.NewClusterE2ETest(
+		t,
+		cloudstack,
+		framework.WithEnvVar(features.FullLifecycleAPIEnvVar, "true"),
+	)
+	managementCluster.GenerateClusterConfigForVersion(release.Version, framework.ExecuteWithEksaRelease(release))
+	managementCluster.UpdateClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithKubernetesVersion(v1alpha1.Kube123),
+		),
+		cloudstack.WithRedhat123(),
+	)
+	test := framework.NewMulticlusterE2ETest(t, managementCluster)
+	wc := framework.NewClusterE2ETest(
+		t,
+		cloudstack,
+		framework.WithClusterName(test.NewWorkloadClusterName()),
+		framework.WithEnvVar(features.FullLifecycleAPIEnvVar, "true"),
+	)
+	wc.GenerateClusterConfigForVersion(release.Version, framework.ExecuteWithEksaRelease(release))
+	wc.UpdateClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithManagementCluster(managementCluster.ClusterName),
+		),
+		cloudstack.WithRedhat123(),
+	)
+	test.WithWorkloadClusters(wc)
+
+	runMulticlusterUpgradeFromReleaseFlowAPI(
+		test,
+		release,
+	)
+}
+
 // Workload GitOps API
 
 func TestCloudStackMulticlusterWorkloadClusterGitHubFluxAPI(t *testing.T) {
