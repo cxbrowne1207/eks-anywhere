@@ -67,11 +67,6 @@ func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETes
 
 	cluster := test.ManagementCluster.GetEKSACluster()
 
-	if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
-		test.T.Log("Press enter to continue with the cleanup after you are done with your manual investigation: ")
-		fmt.Scanln()
-	}
-
 	// Upgrade bundle workload clusters now because they still have the old versions of the bundle.
 	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
 		wc.UpdateClusterConfig(
