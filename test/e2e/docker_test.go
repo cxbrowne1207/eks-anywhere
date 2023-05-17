@@ -819,6 +819,7 @@ func TestDockerKubernetes123to124UpgradeFromLatestMinorReleaseAPI(t *testing.T) 
 		test,
 		release,
 		api.ClusterToConfigFiller(api.WithKubernetesVersion(v1alpha1.Kube124)),
+		api.ClusterToConfigFiller(api.WithKubernetesVersion(v1alpha1.Kube124)),
 	)
 }
 

@@ -2153,15 +2153,23 @@ func TestVSphereKubernetes123to124UpgradeFromLatestMinorReleaseBottleRocketAPI(t
 		),
 		provider.WithBottleRocketForRelease(release, v1alpha1.Kube123),
 	)
-	
+
 	test.WithWorkloadClusters(wc)
 
 	runMulticlusterUpgradeFromReleaseFlowAPI(
 		test,
 		release,
-		provider.WithBottleRocket124(),
-		api.VSphereToConfigFiller(
-			provider.Bottlerocket124Template(), // Set the template so it doesn't get autoimported
+		api.JoinClusterConfigFillers(
+			provider.WithBottleRocket124(),
+			api.VSphereToConfigFiller(
+				provider.Bottlerocket124Template(), // Set the template so it doesn't get autoimported
+			),
+		),
+		api.JoinClusterConfigFillers(
+			provider.WithBottleRocket124(),
+			api.VSphereToConfigFiller(
+				provider.Bottlerocket124Template(), // Set the template so it doesn't get autoimported
+			),
 		),
 	)
 }

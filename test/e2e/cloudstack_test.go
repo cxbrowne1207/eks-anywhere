@@ -1118,6 +1118,8 @@ func TestCloudStackKubernetesRedHat123UpgradeFromLatestMinorReleaseAPI(t *testin
 	runMulticlusterUpgradeFromReleaseFlowAPI(
 		test,
 		release,
+		api.JoinClusterConfigFillers(),
+		api.JoinClusterConfigFillers(),
 	)
 }
 
