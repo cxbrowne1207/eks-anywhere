@@ -67,6 +67,10 @@ func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETes
 
 	cluster := test.ManagementCluster.GetEKSACluster()
 
+	if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
+		test.T.Log("Press enter to continue with the upgrading workload cluster with new bundle: ")
+		fmt.Scanln()
+	}
 	// Upgrade bundle workload clusters now because they still have the old versions of the bundle.
 	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
 		wc.UpdateClusterConfig(
@@ -76,6 +80,12 @@ func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETes
 			),
 		)
 		wc.ApplyClusterManifest()
+
+		if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
+			test.T.Log("Press enter to continue with the upgrading workload cluster with new bundle: ")
+			fmt.Scanln()
+		}
+
 		wc.ValidateClusterState()
 		wc.DeleteClusterWithKubectl()
 		wc.ValidateClusterDelete()
@@ -92,6 +102,64 @@ func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETes
 		wc.WaitForKubeconfig()
 		wc.ValidateClusterState()
 		wc.DeleteClusterWithKubectl()
+		wc.ValidateClusterDelete()
+	})
+
+	test.DeleteManagementCluster()
+}
+
+func runMulticlusterUpgradeFromReleaseFlowAPIWithFlux(test *framework.MulticlusterE2ETest, release *releasev1.EksARelease, mgmtUpgradeChanges, workloadUpgradeChanges api.ClusterConfigFiller) {
+	test.CreateManagementCluster(framework.ExecuteWithEksaRelease(release))
+
+	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
+		wc.CreateCluster(framework.ExecuteWithEksaRelease(release))
+		wc.ValidateCluster(wc.ClusterConfig.Cluster.Spec.KubernetesVersion)
+		wc.StopIfFailed()
+	})
+
+	oldCluster := test.ManagementCluster.GetEKSACluster()
+
+	test.ManagementCluster.UpdateClusterConfig(mgmtUpgradeChanges)
+	test.ManagementCluster.UpgradeCluster()
+	test.ManagementCluster.ValidateCluster(test.ManagementCluster.ClusterConfig.Cluster.Spec.KubernetesVersion)
+	test.ManagementCluster.StopIfFailed()
+
+	cluster := test.ManagementCluster.GetEKSACluster()
+
+	// Upgrade bundle workload clusters now because they still have the old versions of the bundle.
+	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
+		if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
+			test.T.Log("Press enter to continue with the upgrading workload cluster with new bundle: ")
+			fmt.Scanln()
+		}
+
+		test.PushWorkloadClusterToGit(wc,
+			api.JoinClusterConfigFillers(workloadUpgradeChanges),
+			api.ClusterToConfigFiller(
+				api.WithBundlesRef(cluster.Spec.BundlesRef.Name, cluster.Spec.BundlesRef.Namespace, cluster.Spec.BundlesRef.APIVersion),
+			),
+		)
+
+		if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
+			test.T.Log("Press enter to continue with the cleanup after you are done with your manual investigation: ")
+			fmt.Scanln()
+		}
+
+		wc.ValidateClusterState()
+		test.DeleteWorkloadClusterFromGit(wc)
+		wc.ValidateClusterDelete()
+	})
+
+	// Create workload cluster with old bundle
+	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
+		test.PushWorkloadClusterToGit(wc,
+			api.ClusterToConfigFiller(
+				api.WithBundlesRef(oldCluster.Spec.BundlesRef.Name, oldCluster.Spec.BundlesRef.Namespace, oldCluster.Spec.BundlesRef.APIVersion),
+			),
+		)
+		wc.WaitForKubeconfig()
+		wc.ValidateClusterState()
+		test.DeleteWorkloadClusterFromGit(wc)
 		wc.ValidateClusterDelete()
 	})
 

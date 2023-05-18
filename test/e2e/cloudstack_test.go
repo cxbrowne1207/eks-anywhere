@@ -1182,3 +1182,49 @@ func TestCloudStackMulticlusterWorkloadClusterGitHubFluxAPI(t *testing.T) {
 	test.ManagementCluster.StopIfFailed()
 	test.DeleteManagementCluster()
 }
+
+func TestCloudStackKubernetesRedHat123UpgradeFromLatestMinorReleaseGitHubFluxAPI(t *testing.T) {
+	release := latestMinorRelease(t)
+	cloudstack := framework.NewCloudStack(t)
+	managementCluster := framework.NewClusterE2ETest(
+		t,
+		cloudstack,
+		framework.WithEnvVar(features.FullLifecycleAPIEnvVar, "true"),
+		framework.WithFluxGithubEnvVarCheck(),
+		framework.WithFluxGithubCleanup(),
+	)
+	managementCluster.GenerateClusterConfigForVersion(release.Version, framework.ExecuteWithEksaRelease(release))
+	managementCluster.UpdateClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithKubernetesVersion(v1alpha1.Kube123),
+		),
+
+		cloudstack.WithRedhat123(),
+		framework.WithFluxGithubConfig(),
+	)
+	test := framework.NewMulticlusterE2ETest(t, managementCluster)
+	wc := framework.NewClusterE2ETest(
+		t,
+		cloudstack,
+		framework.WithClusterName(test.NewWorkloadClusterName()),
+		framework.WithEnvVar(features.FullLifecycleAPIEnvVar, "true"),
+		framework.WithFluxGithubEnvVarCheck(),
+		framework.WithFluxGithubCleanup(),
+	)
+	wc.GenerateClusterConfigForVersion(release.Version, framework.ExecuteWithEksaRelease(release))
+	wc.UpdateClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithManagementCluster(managementCluster.ClusterName),
+		),
+		cloudstack.WithRedhat123(),
+		framework.WithFluxGithubConfig(),
+	)
+	test.WithWorkloadClusters(wc)
+
+	runMulticlusterUpgradeFromReleaseFlowAPIWithFlux(
+		test,
+		release,
+		api.JoinClusterConfigFillers(),
+		api.JoinClusterConfigFillers(),
+	)
+}
