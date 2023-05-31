@@ -17,15 +17,40 @@ import (
 	"github.com/aws/eks-anywhere/test/framework/cluster/validations"
 )
 
-func validationsForExpectedObjects() []clusterf.StateValidation {
+// totalTimeoutForMachinesReadyWait calculates the total timeout when waiting for machines to be ready.
+// The timeout increases linearly with the number of machines but can never be less than the configured
+// minimun.
+func totalTimeoutForMachinesReadyWait(replicaCount int) time.Duration {
+	machinesMinWait := time.Minute * 30
+	maxWaitPerMachine := time.Minute * 10
+	timeout := maxWaitPerMachine * time.Duration(replicaCount)
+	if timeout <= machinesMinWait {
+		timeout = machinesMinWait
+	}
+
+	return timeout
+}
+
+func validationsForExpectedObjects(clusterSpec *cluster.Spec) []clusterf.StateValidation {
 	mediumRetier := retrier.NewWithMaxRetries(120, 5*time.Second)
-	longRetier := retrier.NewWithMaxRetries(120, 10*time.Second)
+
+	// Scale retry timeout based on the number of control plane machines
+	controlPlaneReadyRetrier := retrier.New(totalTimeoutForMachinesReadyWait(clusterSpec.Cluster.Spec.ControlPlaneConfiguration.Count))
+
+	// Scale retry timeout based on the number of worker node machines
+	var workerNodeCount int
+	for _, workerNodeGroupConfiguration := range clusterSpec.Cluster.Spec.WorkerNodeGroupConfigurations {
+		workerNodeCount += *workerNodeGroupConfiguration.Count
+	}
+
+	workerNodeReadyRetrier := retrier.New(totalTimeoutForMachinesReadyWait(workerNodeCount))
+
 	return []clusterf.StateValidation{
 		clusterf.RetriableStateValidation(mediumRetier, validations.ValidateClusterReady),
 		clusterf.RetriableStateValidation(mediumRetier, validations.ValidateEKSAObjects),
-		clusterf.RetriableStateValidation(longRetier, validations.ValidateControlPlaneNodes),
-		clusterf.RetriableStateValidation(longRetier, validations.ValidateWorkerNodes),
+		clusterf.RetriableStateValidation(controlPlaneReadyRetrier, validations.ValidateControlPlaneNodes),
 		clusterf.RetriableStateValidation(mediumRetier, validations.ValidateCilium),
+		clusterf.RetriableStateValidation(workerNodeReadyRetrier, validations.ValidateWorkerNodes),
 	}
 }
 
