@@ -48,7 +48,7 @@ func cloudstackAPIManagementClusterUpgradeTests(e *framework.ClusterE2ETest, clo
 	clusterName := e.ClusterName
 	return []cloudStackAPIUpgradeTest{
 		{
-			name: "add and remove labels and taints",
+			name: "TestAddAndRemoveLabelsAndTaints",
 			steps: []cloudStackAPIUpgradeTestStep{
 				cloudStackAPIUpdateTestBaseStep(e, cloudstack),
 				{
@@ -72,7 +72,7 @@ func cloudstackAPIManagementClusterUpgradeTests(e *framework.ClusterE2ETest, clo
 			},
 		},
 		{
-			name: "scale up and down worker node group",
+			name: "TestScaleUpAndDownWorkerNodeGroups",
 			steps: []cloudStackAPIUpgradeTestStep{
 				cloudStackAPIUpdateTestBaseStep(e, cloudstack),
 				{
@@ -90,7 +90,7 @@ func cloudstackAPIManagementClusterUpgradeTests(e *framework.ClusterE2ETest, clo
 			},
 		},
 		{
-			name: "replace existing worker node groups",
+			name: "TestReplaceExistingWorkerNodeGroups",
 			steps: []cloudStackAPIUpgradeTestStep{
 				cloudStackAPIUpdateTestBaseStep(e, cloudstack),
 				{
@@ -115,7 +115,7 @@ func cloudStackAPIWorkloadUpgradeTests(wc *framework.WorkloadCluster, cloudstack
 
 	return []cloudStackAPIUpgradeTest{
 		{
-			name: "add and remove labels and taints",
+			name: clusterPrefix(clusterName, "TestAddAndRemoveLabelsAndTaints"),
 			steps: []cloudStackAPIUpgradeTestStep{
 				cloudStackAPIUpdateTestBaseStep(wc.ClusterE2ETest, cloudstack),
 				{
@@ -141,7 +141,7 @@ func cloudStackAPIWorkloadUpgradeTests(wc *framework.WorkloadCluster, cloudstack
 			},
 		},
 		{
-			name: "scale up and down cp and worker node group ",
+			name: clusterPrefix(clusterName, "TestScaleUpDownCPAndWorkerNodeGroups"),
 			steps: []cloudStackAPIUpgradeTestStep{
 				cloudStackAPIUpdateTestBaseStep(wc.ClusterE2ETest, cloudstack),
 				{
@@ -165,7 +165,7 @@ func cloudStackAPIWorkloadUpgradeTests(wc *framework.WorkloadCluster, cloudstack
 			},
 		},
 		{
-			name: "replace existing worker node groups",
+			name: clusterPrefix(clusterName, "TestReplaceExistingWorkerNodeGroups"),
 			steps: []cloudStackAPIUpgradeTestStep{
 				{
 					name: "replacing existing worker node groups",
@@ -182,7 +182,7 @@ func cloudStackAPIWorkloadUpgradeTests(wc *framework.WorkloadCluster, cloudstack
 			},
 		},
 		{
-			name: "availability zones and cilium policy enforcement mode",
+			name: clusterPrefix(clusterName, "TestAvailabilityZonesAndCiliumPolicyEnforcementMode"),
 			steps: []cloudStackAPIUpgradeTestStep{
 				{
 					name: "add availability zone + update cilium policy enforcement mode always",
@@ -211,7 +211,7 @@ func cloudStackAPIWorkloadUpgradeTests(wc *framework.WorkloadCluster, cloudstack
 
 func runCloudStackAPIUpgradeTest(t *testing.T, test *framework.ClusterE2ETest, ut cloudStackAPIUpgradeTest) {
 	for _, step := range ut.steps {
-		t.Logf("Running API upgrade test: %s", step.name)
+		t.Logf("Running API upgrade test step: %s", step.name)
 		test.UpgradeClusterWithKubectl(step.configFiller)
 		test.ValidateClusterStateWithT(t)
 	}
@@ -219,7 +219,7 @@ func runCloudStackAPIUpgradeTest(t *testing.T, test *framework.ClusterE2ETest, u
 
 func runCloudStackAPIWorkloadUpgradeTest(t *testing.T, wc *framework.WorkloadCluster, ut cloudStackAPIUpgradeTest) {
 	for _, step := range ut.steps {
-		t.Logf("Running API workload upgrade test: %s", step.name)
+		t.Logf("Running API workload upgrade test step: %s", step.name)
 		wc.UpdateClusterConfig(step.configFiller)
 		wc.ApplyClusterManifest()
 		wc.ValidateClusterStateWithT(t)
@@ -228,7 +228,7 @@ func runCloudStackAPIWorkloadUpgradeTest(t *testing.T, wc *framework.WorkloadClu
 
 func runCloudStackAPIWorkloadUpgradeTestWithFlux(t *testing.T, test *framework.MulticlusterE2ETest, wc *framework.WorkloadCluster, ut cloudStackAPIUpgradeTest) {
 	for _, step := range ut.steps {
-		t.Logf("Running API upgrade test: %s", step.name)
+		t.Logf("Running API upgrade test step: %s", step.name)
 		test.PushWorkloadClusterToGit(wc, step.configFiller)
 		wc.ValidateClusterStateWithT(t)
 	}

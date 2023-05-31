@@ -2040,7 +2040,7 @@ func validateClusterState(t *testing.T, e *ClusterE2ETest) {
 	ctx := context.Background()
 	e.buildClusterStateValidationConfig(ctx)
 	clusterStateValidator := newClusterStateValidator(e.clusterStateValidationConfig)
-	clusterStateValidator.WithValidations(validationsForExpectedObjects()...)
+	clusterStateValidator.WithValidations(validationsForExpectedObjects(e.clusterStateValidationConfig.ClusterSpec)...)
 	clusterStateValidator.WithValidations(e.Provider.ClusterStateValidations()...)
 	if err := clusterStateValidator.Validate(ctx); err != nil {
 		e.T.Fatalf("failed to validate cluster %v", err)

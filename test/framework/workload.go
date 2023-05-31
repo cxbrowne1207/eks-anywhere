@@ -77,8 +77,10 @@ func (w *WorkloadCluster) WaitForAvailableHardware() {
 // WaitForKubeconfig waits for the kubeconfig for the workload cluster to be available and then writes it to disk.
 func (w *WorkloadCluster) WaitForKubeconfig() {
 	ctx := context.Background()
+	kubeconfigRetrier := retrier.New(30 * time.Minute)
+
 	w.T.Logf("Waiting for workload cluster %s kubeconfig to be available", w.ClusterName)
-	err := retrier.Retry(120, 5*time.Second, func() error {
+	err := kubeconfigRetrier.Retry(func() error {
 		return w.writeKubeconfigToDisk(ctx, fmt.Sprintf("%s-kubeconfig", w.ClusterName), w.KubeconfigFilePath())
 	})
 	if err != nil {
@@ -87,7 +89,7 @@ func (w *WorkloadCluster) WaitForKubeconfig() {
 
 	if len(w.ClusterConfig.AWSIAMConfigs) != 0 {
 		w.T.Logf("Waiting for workload cluster %s iam auth kubeconfig to be available", w.ClusterName)
-		err := retrier.Retry(120, 5*time.Second, func() error {
+		err := kubeconfigRetrier.Retry(func() error {
 			return w.writeKubeconfigToDisk(ctx, fmt.Sprintf("%s-aws-iam-kubeconfig", w.ClusterName), w.iamAuthKubeconfigFilePath())
 		})
 		if err != nil {
@@ -96,7 +98,7 @@ func (w *WorkloadCluster) WaitForKubeconfig() {
 	}
 
 	w.T.Logf("Waiting for workload cluster %s control plane to be ready", w.ClusterName)
-	if err := w.KubectlClient.WaitForControlPlaneReady(ctx, w.managementCluster(), "15m", w.ClusterName); err != nil {
+	if err := w.KubectlClient.WaitForControlPlaneReady(ctx, w.managementCluster(), "30m", w.ClusterName); err != nil {
 		w.T.Errorf("Failed waiting for control plane ready: %s", err)
 	}
 }
