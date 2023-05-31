@@ -4,8 +4,8 @@
 package e2e
 
 import (
-	"fmt"
-	"os"
+	// "fmt"
+	// "os"
 	"testing"
 
 	"github.com/aws/eks-anywhere/internal/pkg/api"
@@ -49,7 +49,7 @@ func runUpgradeWithFluxFromReleaseFlow(test *framework.ClusterE2ETest, latestRel
 	test.DeleteCluster()
 }
 
-func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETest, release *releasev1.EksARelease, mgmtUpgradeChanges, workloadUpgradeChanges api.ClusterConfigFiller) {
+func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETest, release *releasev1.EksARelease, upgradeChanges api.ClusterConfigFiller) {
 	test.CreateManagementCluster(framework.ExecuteWithEksaRelease(release))
 
 	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
@@ -60,35 +60,27 @@ func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETes
 
 	oldCluster := test.ManagementCluster.GetEKSACluster()
 
-	test.ManagementCluster.UpdateClusterConfig(mgmtUpgradeChanges)
+	test.ManagementCluster.UpdateClusterConfig(upgradeChanges)
 	test.ManagementCluster.UpgradeCluster()
 	test.ManagementCluster.ValidateCluster(test.ManagementCluster.ClusterConfig.Cluster.Spec.KubernetesVersion)
 	test.ManagementCluster.StopIfFailed()
 
 	cluster := test.ManagementCluster.GetEKSACluster()
 
-	if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
-		test.T.Log("Press enter to continue with the upgrading workload cluster with new bundle: ")
-		fmt.Scanln()
-	}
 	// Upgrade bundle workload clusters now because they still have the old versions of the bundle.
 	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
 		wc.UpdateClusterConfig(
-			api.JoinClusterConfigFillers(workloadUpgradeChanges),
+			api.JoinClusterConfigFillers(upgradeChanges),
 			api.ClusterToConfigFiller(
 				api.WithBundlesRef(cluster.Spec.BundlesRef.Name, cluster.Spec.BundlesRef.Namespace, cluster.Spec.BundlesRef.APIVersion),
 			),
 		)
 		wc.ApplyClusterManifest()
-
-		if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
-			test.T.Log("Press enter to continue with the upgrading workload cluster with new bundle: ")
-			fmt.Scanln()
-		}
-
 		wc.ValidateClusterState()
+		wc.StopIfFailed()
 		wc.DeleteClusterWithKubectl()
 		wc.ValidateClusterDelete()
+		wc.StopIfFailed()
 	})
 
 	// Create workload cluster with old bundle
@@ -101,14 +93,16 @@ func runMulticlusterUpgradeFromReleaseFlowAPI(test *framework.MulticlusterE2ETes
 		wc.ApplyClusterManifest()
 		wc.WaitForKubeconfig()
 		wc.ValidateClusterState()
+		wc.StopIfFailed()
 		wc.DeleteClusterWithKubectl()
 		wc.ValidateClusterDelete()
+		wc.StopIfFailed()
 	})
 
 	test.DeleteManagementCluster()
 }
 
-func runMulticlusterUpgradeFromReleaseFlowAPIWithFlux(test *framework.MulticlusterE2ETest, release *releasev1.EksARelease, mgmtUpgradeChanges, workloadUpgradeChanges api.ClusterConfigFiller) {
+func runMulticlusterUpgradeFromReleaseFlowAPIWithFlux(test *framework.MulticlusterE2ETest, release *releasev1.EksARelease, upgradeChanges api.ClusterConfigFiller) {
 	test.CreateManagementCluster(framework.ExecuteWithEksaRelease(release))
 
 	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
@@ -119,7 +113,7 @@ func runMulticlusterUpgradeFromReleaseFlowAPIWithFlux(test *framework.Multiclust
 
 	oldCluster := test.ManagementCluster.GetEKSACluster()
 
-	test.ManagementCluster.UpdateClusterConfig(mgmtUpgradeChanges)
+	test.ManagementCluster.UpdateClusterConfig(upgradeChanges)
 	test.ManagementCluster.UpgradeCluster()
 	test.ManagementCluster.ValidateCluster(test.ManagementCluster.ClusterConfig.Cluster.Spec.KubernetesVersion)
 	test.ManagementCluster.StopIfFailed()
@@ -128,22 +122,12 @@ func runMulticlusterUpgradeFromReleaseFlowAPIWithFlux(test *framework.Multiclust
 
 	// Upgrade bundle workload clusters now because they still have the old versions of the bundle.
 	test.RunConcurrentlyInWorkloadClusters(func(wc *framework.WorkloadCluster) {
-		// if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
-		// 	test.T.Log("Press enter to continue with the upgrading workload cluster with new bundle: ")
-		// 	fmt.Scanln()
-		// }
-
 		test.PushWorkloadClusterToGit(wc,
-			api.JoinClusterConfigFillers(workloadUpgradeChanges),
+			api.JoinClusterConfigFillers(upgradeChanges),
 			api.ClusterToConfigFiller(
 				api.WithBundlesRef(cluster.Spec.BundlesRef.Name, cluster.Spec.BundlesRef.Namespace, cluster.Spec.BundlesRef.APIVersion),
 			),
 		)
-
-		// if os.Getenv("MANUAL_TEST_PAUSE") == "true" {
-		// 	test.T.Log("Press enter to continue with the cleanup after you are done with your manual investigation: ")
-		// 	fmt.Scanln()
-		// }
 
 		wc.ValidateClusterState()
 		test.DeleteWorkloadClusterFromGit(wc)

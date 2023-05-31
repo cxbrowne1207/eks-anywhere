@@ -57,14 +57,6 @@ func NewUpgrade(bootstrapper interfaces.Bootstrapper, provider providers.Provide
 }
 
 func (c *Upgrade) Run(ctx context.Context, clusterSpec *cluster.Spec, managementCluster *types.Cluster, workloadCluster *types.Cluster, validator interfaces.Validator, forceCleanup bool) error {
-	if forceCleanup {
-		if err := c.bootstrapper.DeleteBootstrapCluster(ctx, &types.Cluster{
-			Name: clusterSpec.Cluster.Name,
-		}, constants.Upgrade, forceCleanup); err != nil {
-			return err
-		}
-	}
-
 	commandContext := &task.CommandContext{
 		Bootstrapper:      c.bootstrapper,
 		Provider:          c.provider,
@@ -80,6 +72,7 @@ func (c *Upgrade) Run(ctx context.Context, clusterSpec *cluster.Spec, management
 		EksdUpgrader:      c.eksdUpgrader,
 		ClusterUpgrader:   c.clusterUpgrader,
 		UpgradeChangeDiff: c.upgradeChangeDiff,
+		ForceCleanup:      forceCleanup,
 	}
 	if features.IsActive(features.CheckpointEnabled()) {
 		return task.NewTaskRunner(&setupAndValidateTasks{}, c.writer, task.WithCheckpointFile()).RunTask(ctx, commandContext)
@@ -379,6 +372,14 @@ func (s *pauseEksaReconcile) Restore(ctx context.Context, commandContext *task.C
 }
 
 func (s *createBootstrapClusterTask) Run(ctx context.Context, commandContext *task.CommandContext) task.Task {
+	if commandContext.ForceCleanup {
+		if err := commandContext.Bootstrapper.DeleteBootstrapCluster(ctx, &types.Cluster{
+			Name: commandContext.ClusterSpec.Cluster.Name,
+		}, constants.Upgrade, commandContext.ForceCleanup); err != nil {
+			commandContext.SetError(err)
+			return nil
+		}
+	}
 	if commandContext.ManagementCluster != nil && commandContext.ManagementCluster.ExistingManagement {
 		return &upgradeWorkloadClusterTask{}
 	}
@@ -466,7 +467,14 @@ func (s *moveManagementToBootstrapTask) Run(ctx context.Context, commandContext 
 		return &CollectDiagnosticsTask{}
 	}
 
-	logger.Info("Moving cluster management from workload to bootstrap cluster")
+	logger.V(3).Info("Pausing workload clusters before moving management cluster resources to bootstrap cluster")
+	err = commandContext.ClusterManager.PauseCAPIWorkloadClusters(ctx, commandContext.WorkloadCluster)
+	if err != nil {
+		commandContext.SetError(err)
+		return &CollectDiagnosticsTask{}
+	}
+
+	logger.Info("Moving management cluster from workload to bootstrap cluster")
 	err = commandContext.ClusterManager.MoveCAPI(ctx, commandContext.WorkloadCluster, commandContext.BootstrapCluster, commandContext.WorkloadCluster.Name, commandContext.ClusterSpec, types.WithNodeRef(), types.WithNodeHealthy())
 	if err != nil {
 		commandContext.SetError(err)
@@ -567,6 +575,14 @@ func (s *moveManagementToWorkloadTask) Run(ctx context.Context, commandContext *
 		return &CollectDiagnosticsTask{}
 	}
 	commandContext.ManagementCluster = commandContext.WorkloadCluster
+
+	logger.V(3).Info("Resuming all workload clusters after moving management cluster resources from bootstrap to management clusters")
+	err = commandContext.ClusterManager.ResumeCAPIWorkloadClusters(ctx, commandContext.ManagementCluster)
+	if err != nil {
+		commandContext.SetError(err)
+		return &CollectDiagnosticsTask{}
+	}
+
 	return &reconcileClusterDefinitions{eksaSpecDiff: true}
 }
 

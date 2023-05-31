@@ -21,20 +21,23 @@ import (
 
 	rapi "github.com/tinkerbell/rufio/api/v1alpha1"
 	rctrl "github.com/tinkerbell/rufio/controllers"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
 	packagesv1 "github.com/aws/eks-anywhere-packages/api/v1alpha1"
 	"github.com/aws/eks-anywhere/internal/pkg/api"
 	"github.com/aws/eks-anywhere/pkg/api/v1alpha1"
+	"github.com/aws/eks-anywhere/pkg/clients/kubernetes"
 	"github.com/aws/eks-anywhere/pkg/cluster"
 	"github.com/aws/eks-anywhere/pkg/constants"
 	"github.com/aws/eks-anywhere/pkg/executables"
-	"github.com/aws/eks-anywhere/pkg/features"
 	"github.com/aws/eks-anywhere/pkg/filewriter"
 	"github.com/aws/eks-anywhere/pkg/git"
+	"github.com/aws/eks-anywhere/pkg/providers/cloudstack/decoder"
 	"github.com/aws/eks-anywhere/pkg/retrier"
 	"github.com/aws/eks-anywhere/pkg/semver"
 	"github.com/aws/eks-anywhere/pkg/templater"
@@ -283,20 +286,6 @@ func WithEksaVersion(version *semver.Version) ClusterE2ETestOpt {
 func WithLatestMinorReleaseFromMain() ClusterE2ETestOpt {
 	return func(e *ClusterE2ETest) {
 		eksaBinaryLocation, err := GetLatestMinorReleaseBinaryFromMain()
-		if err != nil {
-			e.T.Fatal(err)
-		}
-		e.eksaBinaryLocation = eksaBinaryLocation
-		err = setEksctlVersionEnvVar()
-		if err != nil {
-			e.T.Fatal(err)
-		}
-	}
-}
-
-func WithLatestMinorReleaseFromVersion(version *semver.Version) ClusterE2ETestOpt {
-	return func(e *ClusterE2ETest) {
-		eksaBinaryLocation, err := GetLatestMinorReleaseBinaryFromVersion(version)
 		if err != nil {
 			e.T.Fatal(err)
 		}
@@ -692,14 +681,14 @@ func (e *ClusterE2ETest) CreateCluster(opts ...CommandOpt) {
 
 func (e *ClusterE2ETest) createCluster(opts ...CommandOpt) {
 	if e.PersistentCluster {
-		if fileExists(e.kubeconfigFilePath()) {
+		if fileExists(e.KubeconfigFilePath()) {
 			e.T.Logf("Persisent cluster: kubeconfig found for cluster %s, skipping cluster creation", e.ClusterName)
 			return
 		}
 	}
 
 	e.T.Logf("Creating cluster %s", e.ClusterName)
-	createClusterArgs := []string{"create", "cluster", "-f", e.ClusterConfigLocation, "-v", "12"}
+	createClusterArgs := []string{"create", "cluster", "-f", e.ClusterConfigLocation, "-v", "12", "--force-cleanup"}
 
 	dumpFile("Create cluster from file:", e.ClusterConfigLocation, e.T)
 
@@ -796,7 +785,7 @@ func (e *ClusterE2ETest) ApplyClusterManifest() {
 }
 
 func (e *ClusterE2ETest) applyClusterManifest(ctx context.Context) {
-	if err := e.KubectlClient.ApplyManifest(ctx, e.kubeconfigFilePath(), e.ClusterConfigLocation); err != nil {
+	if err := e.KubectlClient.ApplyManifest(ctx, e.KubeconfigFilePath(), e.ClusterConfigLocation); err != nil {
 		e.T.Fatalf("Failed to apply cluster config: %s", err)
 	}
 }
@@ -808,10 +797,20 @@ func WithClusterUpgrade(fillers ...api.ClusterFiller) ClusterE2ETestOpt {
 	}
 }
 
-// UpgradeClusterWithKubectl uses client-side logic to upgrade a cluster.
+// UpgradeClusterWithKubectl uses client-side logic to upgrade a cluster that was created using the CLI.
 func (e *ClusterE2ETest) UpgradeClusterWithKubectl(fillers ...api.ClusterConfigFiller) {
-	fullClusterConfigLocation := filepath.Join(e.ClusterConfigFolder, e.ClusterName+"-eks-a-cluster.yaml")
-	e.parseClusterConfigFromDisk(fullClusterConfigLocation)
+	// The CLI adds the BundlesRef field to the config and writes it to disk.
+	// We want to grab the existing BundlesRef, and update our test ClusterConfig
+	// because updating it with a nil value after previously being set will throw a webhook error.
+	if e.ClusterConfig.Cluster.Spec.BundlesRef == nil {
+		fullClusterConfigLocation := filepath.Join(e.ClusterConfigFolder, e.ClusterName+"-eks-a-cluster.yaml")
+		e.T.Logf("Parsing cluster config from disk: %s", fullClusterConfigLocation)
+		config, err := cluster.ParseConfigFromFile(fullClusterConfigLocation)
+		if err != nil {
+			e.T.Fatalf("Failed parsing generated cluster config: %s", err)
+		}
+		e.ClusterConfig.Cluster.Spec.BundlesRef = config.Cluster.Spec.BundlesRef
+	}
 	e.UpdateClusterConfig(fillers...)
 	e.ApplyClusterManifest()
 }
@@ -888,6 +887,7 @@ func (e *ClusterE2ETest) buildClusterConfigFile() {
 	if err != nil {
 		e.T.Fatalf("Error writing cluster config to file %s: %v", e.ClusterConfigLocation, err)
 	}
+	e.T.Logf("Written cluster config to %v", writtenFile)
 	e.ClusterConfigLocation = writtenFile
 }
 
@@ -895,6 +895,8 @@ func (e *ClusterE2ETest) DeleteCluster(opts ...CommandOpt) {
 	e.deleteCluster(opts...)
 }
 
+// CleanupVms is a helper to clean up VMs. It is a noop if the T_CLEANUP_VMS environment variable
+// is false or unset.
 func (e *ClusterE2ETest) CleanupVms() {
 	if !shouldCleanUpVms() {
 		e.T.Logf("Skipping VM cleanup")
@@ -1018,7 +1020,7 @@ func (e *ClusterE2ETest) cleanup(f func()) {
 func (e *ClusterE2ETest) Cluster() *types.Cluster {
 	return &types.Cluster{
 		Name:           e.ClusterName,
-		KubeconfigFile: e.kubeconfigFilePath(),
+		KubeconfigFile: e.KubeconfigFilePath(),
 	}
 }
 
@@ -1029,14 +1031,33 @@ func (e *ClusterE2ETest) managementCluster() *types.Cluster {
 	}
 }
 
-func (e *ClusterE2ETest) kubeconfigFilePath() string {
+// KubeconfigFilePath retrieves the Kubeconfig path used for the workload cluster.
+func (e *ClusterE2ETest) KubeconfigFilePath() string {
 	return filepath.Join(e.ClusterName, fmt.Sprintf("%s-eks-a-cluster.kubeconfig", e.ClusterName))
+}
+
+// BuildWorkloadClusterClient creates a client for the workload cluster created by e.
+func (e *ClusterE2ETest) BuildWorkloadClusterClient() (client.Client, error) {
+	var clusterClient client.Client
+	// Adding the retry logic here because the connection to the client does not always
+	// succedd on the first try due to connection failure after the kubeconfig becomes
+	// available in the cluster.
+	err := retrier.Retry(12, 5*time.Second, func() error {
+		c, err := kubernetes.NewRuntimeClientFromFileName(e.KubeconfigFilePath())
+		if err != nil {
+			return fmt.Errorf("failed to build cluster client: %v", err)
+		}
+		clusterClient = c
+		return nil
+	})
+
+	return clusterClient, err
 }
 
 func (e *ClusterE2ETest) managementKubeconfigFilePath() string {
 	clusterConfig := e.ClusterConfig.Cluster
 	if clusterConfig.IsSelfManaged() {
-		return e.kubeconfigFilePath()
+		return e.KubeconfigFilePath()
 	}
 	managementClusterName := e.ClusterConfig.Cluster.ManagedBy()
 	return filepath.Join(managementClusterName, fmt.Sprintf("%s-eks-a-cluster.kubeconfig", managementClusterName))
@@ -1050,7 +1071,7 @@ func (e *ClusterE2ETest) GetEksaVSphereMachineConfigs() []v1alpha1.VSphereMachin
 		machineConfigNames = append(machineConfigNames, workerNodeConf.MachineGroupRef.Name)
 	}
 
-	kubeconfig := e.kubeconfigFilePath()
+	kubeconfig := e.KubeconfigFilePath()
 	ctx := context.Background()
 
 	machineConfigs := make([]v1alpha1.VSphereMachineConfig, 0, len(machineConfigNames))
@@ -1108,7 +1129,7 @@ func setEksctlVersionEnvVar() error {
 }
 
 func (e *ClusterE2ETest) InstallHelmChart() {
-	kubeconfig := e.kubeconfigFilePath()
+	kubeconfig := e.KubeconfigFilePath()
 	ctx := context.Background()
 
 	err := e.HelmInstallConfig.HelmClient.InstallChart(ctx, e.HelmInstallConfig.chartName, e.HelmInstallConfig.chartURI, e.HelmInstallConfig.chartVersion, kubeconfig, "", "", false, e.HelmInstallConfig.chartValues)
@@ -1119,7 +1140,7 @@ func (e *ClusterE2ETest) InstallHelmChart() {
 
 // CreateNamespace creates a namespace.
 func (e *ClusterE2ETest) CreateNamespace(namespace string) {
-	kubeconfig := e.kubeconfigFilePath()
+	kubeconfig := e.KubeconfigFilePath()
 	err := e.KubectlClient.CreateNamespace(context.Background(), kubeconfig, namespace)
 	if err != nil {
 		e.T.Fatalf("Namespace creation failed for %s", namespace)
@@ -1128,7 +1149,7 @@ func (e *ClusterE2ETest) CreateNamespace(namespace string) {
 
 // DeleteNamespace deletes a namespace.
 func (e *ClusterE2ETest) DeleteNamespace(namespace string) {
-	kubeconfig := e.kubeconfigFilePath()
+	kubeconfig := e.KubeconfigFilePath()
 	err := e.KubectlClient.DeleteNamespace(context.Background(), kubeconfig, namespace)
 	if err != nil {
 		e.T.Fatalf("Namespace deletion failed for %s", namespace)
@@ -1137,12 +1158,12 @@ func (e *ClusterE2ETest) DeleteNamespace(namespace string) {
 
 // SetPackageBundleActive will set the current packagebundle to the active state.
 func (e *ClusterE2ETest) SetPackageBundleActive() {
-	kubeconfig := e.kubeconfigFilePath()
+	kubeconfig := e.KubeconfigFilePath()
 	pbc, err := e.KubectlClient.GetPackageBundleController(context.Background(), kubeconfig, e.ClusterName)
 	if err != nil {
 		e.T.Fatalf("Error getting PackageBundleController: %v", err)
 	}
-	pb, err := e.KubectlClient.GetPackageBundleList(context.Background(), e.kubeconfigFilePath())
+	pb, err := e.KubectlClient.GetPackageBundleList(context.Background(), e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("Error getting PackageBundle: %v", err)
 	}
@@ -1158,7 +1179,7 @@ func (e *ClusterE2ETest) SetPackageBundleActive() {
 
 // ValidatingNoPackageController make sure there is no package controller.
 func (e *ClusterE2ETest) ValidatingNoPackageController() {
-	kubeconfig := e.kubeconfigFilePath()
+	kubeconfig := e.KubeconfigFilePath()
 	_, err := e.KubectlClient.GetPackageBundleController(context.Background(), kubeconfig, e.ClusterName)
 	if err == nil {
 		e.T.Fatalf("Error unexpected PackageBundleController: %v", err)
@@ -1253,7 +1274,7 @@ func (e *ClusterE2ETest) InstallLocalStorageProvisioner() {
 	ctx := context.Background()
 	_, err := e.KubectlClient.ExecuteCommand(ctx, "apply", "-f",
 		"https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.22/deploy/local-path-storage.yaml",
-		"--kubeconfig", e.kubeconfigFilePath())
+		"--kubeconfig", e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("Error installing local-path-provisioner: %v", err)
 	}
@@ -1269,7 +1290,7 @@ func (e *ClusterE2ETest) WithCluster(f func(e *ClusterE2ETest)) {
 
 // Like WithCluster but does not delete the cluster. Useful for debugging.
 func (e *ClusterE2ETest) WithPersistentCluster(f func(e *ClusterE2ETest)) {
-	configPath := e.kubeconfigFilePath()
+	configPath := e.KubeconfigFilePath()
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		e.GenerateClusterConfig()
 		e.CreateCluster()
@@ -1310,7 +1331,7 @@ func (e *ClusterE2ETest) VerifyHarborPackageInstalled(prefix string, namespace s
 	for _, name := range statefulsets {
 		go func(name string) {
 			defer wg.Done()
-			err := e.KubectlClient.Wait(ctx, e.kubeconfigFilePath(), "20m", "Ready",
+			err := e.KubectlClient.Wait(ctx, e.KubeconfigFilePath(), "20m", "Ready",
 				fmt.Sprintf("pods/%s-harbor-%s-0", prefix, name), namespace)
 			if err != nil {
 				errCh <- err
@@ -1355,7 +1376,7 @@ func (e *ClusterE2ETest) VerifyHelloPackageInstalled(packageName string, mgmtClu
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, constants.EksaPackagesName)
 	}()
@@ -1395,7 +1416,7 @@ func (e *ClusterE2ETest) VerifyAdotPackageInstalled(packageName string, targetNa
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, targetNamespace)
 	}()
@@ -1408,14 +1429,14 @@ func (e *ClusterE2ETest) VerifyAdotPackageInstalled(packageName string, targetNa
 	}
 
 	e.T.Log("Reading", packageName, "pod logs")
-	adotPodName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app.kubernetes.io/name=aws-otel-collector", e.kubeconfigFilePath())
+	adotPodName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app.kubernetes.io/name=aws-otel-collector", e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("unable to get name of the aws-otel-collector pod: %s", err)
 	}
 	expectedLogs := "Everything is ready"
 	e.MatchLogs(targetNamespace, adotPodName, "aws-otel-collector", expectedLogs, 5*time.Minute)
 
-	podIPAddress, err := e.KubectlClient.GetPodIP(context.TODO(), targetNamespace, adotPodName, e.kubeconfigFilePath())
+	podIPAddress, err := e.KubectlClient.GetPodIP(context.TODO(), targetNamespace, adotPodName, e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("unable to get ip of the aws-otel-collector pod: %s", err)
 	}
@@ -1448,7 +1469,7 @@ func (e *ClusterE2ETest) VerifyAdotPackageDeploymentUpdated(packageName string, 
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, targetNamespace)
 	}()
@@ -1468,16 +1489,16 @@ func (e *ClusterE2ETest) VerifyAdotPackageDeploymentUpdated(packageName string, 
 	}
 
 	e.T.Log("Reading", packageName, "pod logs")
-	adotPodName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app.kubernetes.io/name=aws-otel-collector", e.kubeconfigFilePath())
+	adotPodName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app.kubernetes.io/name=aws-otel-collector", e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("unable to get name of the aws-otel-collector pod: %s", err)
 	}
-	logs, err := e.KubectlClient.GetPodLogs(context.TODO(), targetNamespace, adotPodName, "aws-otel-collector", e.kubeconfigFilePath())
+	logs, err := e.KubectlClient.GetPodLogs(context.TODO(), targetNamespace, adotPodName, "aws-otel-collector", e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("failure getting pod logs %s", err)
 	}
 	fmt.Printf("Logs from aws-otel-collector pod\n %s\n", logs)
-	expectedLogs := "MetricsExporter	{\"kind\": \"exporter\", \"data_type\": \"metrics\", \"name\": \"logging\", \"#metrics\":"
+	expectedLogs := "Everything is ready"
 	ok := strings.Contains(logs, expectedLogs)
 	if !ok {
 		e.T.Fatalf("expected to find %s in the log, got %s", expectedLogs, logs)
@@ -1501,7 +1522,7 @@ func (e *ClusterE2ETest) VerifyAdotPackageDaemonSetUpdated(packageName string, t
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, targetNamespace)
 	}()
@@ -1523,13 +1544,13 @@ func (e *ClusterE2ETest) VerifyAdotPackageDaemonSetUpdated(packageName string, t
 	}
 
 	e.T.Log("Reading", packageName, "pod logs")
-	adotPodName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app.kubernetes.io/name=aws-otel-collector", e.kubeconfigFilePath())
+	adotPodName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app.kubernetes.io/name=aws-otel-collector", e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("unable to get name of the aws-otel-collector pod: %s", err)
 	}
-	expectedLogs := "MetricsExporter	{\"kind\": \"exporter\", \"data_type\": \"metrics\", \"name\": \"logging\", \"#metrics\":"
+	expectedLogs := "Everything is ready"
 	err = retrier.New(5 * time.Minute).Retry(func() error {
-		logs, err := e.KubectlClient.GetPodLogs(context.TODO(), targetNamespace, adotPodName, "aws-otel-collector", e.kubeconfigFilePath())
+		logs, err := e.KubectlClient.GetPodLogs(context.TODO(), targetNamespace, adotPodName, "aws-otel-collector", e.KubeconfigFilePath())
 		if err != nil {
 			e.T.Fatalf("failure getting pod logs %s", err)
 		}
@@ -1565,7 +1586,7 @@ func (e *ClusterE2ETest) VerifyEmissaryPackageInstalled(packageName string, mgmt
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, constants.EksaPackagesName)
 	}()
@@ -1595,7 +1616,7 @@ func (e *ClusterE2ETest) TestEmissaryPackageRouting(packageName string, mgmtClus
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, constants.EksaPackagesName)
 	}()
@@ -1648,7 +1669,7 @@ func (e *ClusterE2ETest) VerifyCertManagerPackageInstalled(prefix string, namesp
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, namespace)
 	}()
@@ -1796,7 +1817,7 @@ func (e *ClusterE2ETest) VerifyPrometheusPrometheusServerStates(packageName stri
 	}
 
 	e.T.Log("Reading package", packageName, "pod prometheus-server logs")
-	podName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app=prometheus,component=server", e.kubeconfigFilePath())
+	podName, err := e.KubectlClient.GetPodNameByLabel(context.TODO(), targetNamespace, "app=prometheus,component=server", e.KubeconfigFilePath())
 	if err != nil {
 		e.T.Fatalf("unable to get name of the prometheus-server pod: %s", err)
 	}
@@ -1864,7 +1885,7 @@ func (e *ClusterE2ETest) VerifyAutoScalerPackageInstalled(packageName string, ta
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, targetNamespace)
 	}()
@@ -1893,7 +1914,7 @@ func (e *ClusterE2ETest) VerifyMetricServerPackageInstalled(packageName string, 
 
 	// Log Package/Deployment outputs
 	defer func() {
-		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.kubeconfigFilePath()}
+		params := []string{"get", "package", packageName, "-o", "json", "-n", packageMetadatNamespace, "--kubeconfig", e.KubeconfigFilePath()}
 		e.printPackageSpec(ctx, params)
 		e.printDeploymentSpec(ctx, targetNamespace)
 	}()
@@ -1975,7 +1996,7 @@ func (e *ClusterE2ETest) CombinedAutoScalerMetricServerTest(autoscalerName strin
 		e.T.Fatalf("Failed waiting for test workload deployent %s", err)
 	}
 
-	params := []string{"autoscale", "deployment", name, "--cpu-percent=50", "--min=1", "--max=20", "--kubeconfig", e.kubeconfigFilePath()}
+	params := []string{"autoscale", "deployment", name, "--cpu-percent=50", "--min=1", "--max=20", "--kubeconfig", e.KubeconfigFilePath()}
 	_, err = e.KubectlClient.ExecuteCommand(ctx, params...)
 	if err != nil {
 		e.T.Fatalf("Failed to autoscale deployent: %s", err)
@@ -2011,7 +2032,7 @@ func (e *ClusterE2ETest) ValidateClusterState() {
 
 // ValidateClusterStateWithT runs a set of validations against the cluster to identify an invalid cluster state and accepts *testing.T as a parameter.
 func (e *ClusterE2ETest) ValidateClusterStateWithT(t *testing.T) {
-	validateClusterState(e.T.(*testing.T), e)
+	validateClusterState(t, e)
 }
 
 func validateClusterState(t *testing.T, e *ClusterE2ETest) {
@@ -2048,7 +2069,7 @@ func (e *ClusterE2ETest) CurlEndpointByBusyBox(endpoint string, namespace string
 	e.T.Log("Launching Busybox pod to curl endpoint", endpoint)
 	randomname := fmt.Sprintf("%s-%s", "busybox-test", utilrand.String(7))
 	busyBoxPodName, err := e.KubectlClient.RunBusyBoxPod(context.TODO(),
-		namespace, randomname, e.kubeconfigFilePath(), []string{"curl", endpoint})
+		namespace, randomname, e.KubeconfigFilePath(), []string{"curl", endpoint})
 	if err != nil {
 		e.T.Fatalf("error launching busybox pod: %s", err)
 	}
@@ -2074,7 +2095,7 @@ func (e *ClusterE2ETest) MatchLogs(targetNamespace string, targetPodName string,
 
 	err := retrier.New(timeout).Retry(func() error {
 		logs, err := e.KubectlClient.GetPodLogs(context.TODO(), targetNamespace,
-			targetPodName, targetContainerName, e.kubeconfigFilePath())
+			targetPodName, targetContainerName, e.KubeconfigFilePath())
 		if err != nil {
 			return fmt.Errorf("failure getting pod logs %s", err)
 		}
@@ -2140,11 +2161,66 @@ func dumpFile(description string, path string, t T) {
 func (e *ClusterE2ETest) setFeatureFlagForUnreleasedKubernetesVersion(version v1alpha1.KubernetesVersion) {
 	// Update this variable to equal the feature flagged k8s version when applicable.
 	// For example, if k8s 1.26 is under a feature flag, we would set this to v1alpha1.Kube126
-	unreleasedK8sVersion := v1alpha1.Kube127
+	var unreleasedK8sVersion v1alpha1.KubernetesVersion
 
 	if version == unreleasedK8sVersion {
 		// Set feature flag for the unreleased k8s version when applicable
 		e.T.Logf("Setting k8s version support feature flag...")
-		os.Setenv(features.K8s127SupportEnvVar, "true")
+	}
+}
+
+// CreateCloudStackCredentialsSecretFromEnvVar parses the cloudstack credentials from an environment variable,
+// builds a new secret object from the credentials in the provided profile and creates it in the cluster.
+func (e *ClusterE2ETest) CreateCloudStackCredentialsSecretFromEnvVar(name string, profileName string) {
+	ctx := context.Background()
+
+	execConfig, err := decoder.ParseCloudStackCredsFromEnv()
+	if err != nil {
+		e.T.Fatalf("error parsing cloudstack credentials from env: %v", err)
+		return
+	}
+
+	var selectedProfile *decoder.CloudStackProfileConfig
+	for _, p := range execConfig.Profiles {
+		if profileName == p.Name {
+			selectedProfile = &p
+			break
+		}
+	}
+
+	if selectedProfile == nil {
+		e.T.Fatalf("error finding profile with the name %s", profileName)
+		return
+	}
+
+	data := map[string][]byte{}
+	data[decoder.APIKeyKey] = []byte(selectedProfile.ApiKey)
+	data[decoder.SecretKeyKey] = []byte(selectedProfile.SecretKey)
+	data[decoder.APIUrlKey] = []byte(selectedProfile.ManagementUrl)
+	data[decoder.VerifySslKey] = []byte(selectedProfile.VerifySsl)
+
+	// Create a new secret with the credentials from the profile, but with a new name.
+	secret := corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Data: data,
+	}
+
+	secretContent, err := yaml.Marshal(secret)
+	if err != nil {
+		e.T.Fatalf("error mashalling credentials secret : %v", err)
+		return
+	}
+
+	err = e.KubectlClient.ApplyKubeSpecFromBytesWithNamespace(ctx, e.Cluster(), secretContent,
+		constants.EksaSystemNamespace)
+	if err != nil {
+		e.T.Fatalf("error applying credentials secret to cluster %s: %v", e.Cluster().Name, err)
+		return
 	}
 }

@@ -101,6 +101,11 @@ func newUpgradeTest(t *testing.T) *upgradeTestSetup {
 	}
 }
 
+func (c *upgradeTestSetup) WithForceCleanup() *upgradeTestSetup {
+	c.forceCleanup = true
+	return c
+}
+
 func newUpgradeSelfManagedClusterTest(t *testing.T) *upgradeTestSetup {
 	tt := newUpgradeTest(t)
 	tt.bootstrapCluster = &types.Cluster{
@@ -186,6 +191,14 @@ func (c *upgradeTestSetup) expectUpgradeCoreComponents(managementCluster *types.
 	)
 }
 
+func (c *upgradeTestSetup) expectForceCleanupBootstrap() {
+	c.bootstrapper.EXPECT().DeleteBootstrapCluster(c.ctx, gomock.Not(gomock.Nil()), gomock.Not(gomock.Nil()), true).Return(nil)
+}
+
+func (c *upgradeTestSetup) expectForceCleanupBootstrapError() {
+	c.bootstrapper.EXPECT().DeleteBootstrapCluster(c.ctx, gomock.Not(gomock.Nil()), gomock.Not(gomock.Nil()), true).Return(errors.New("test error"))
+}
+
 func (c *upgradeTestSetup) expectCreateBootstrap() {
 	opts := []bootstrapper.BootstrapClusterOption{
 		bootstrapper.WithExtraDockerMounts(),
@@ -269,6 +282,7 @@ func (c *upgradeTestSetup) expectPrepareUpgradeWorkload(managementCluster *types
 func (c *upgradeTestSetup) expectMoveManagementToBootstrap() {
 	gomock.InOrder(
 		c.clusterManager.EXPECT().BackupCAPI(c.ctx, c.managementCluster, c.managementStatePath),
+		c.clusterManager.EXPECT().PauseCAPIWorkloadClusters(c.ctx, c.managementCluster),
 		c.clusterManager.EXPECT().MoveCAPI(
 			c.ctx, c.managementCluster, c.bootstrapCluster, gomock.Any(), c.newClusterSpec, gomock.Any(),
 		),
@@ -293,6 +307,7 @@ func (c *upgradeTestSetup) expectMoveManagementToWorkload() {
 		c.clusterManager.EXPECT().MoveCAPI(
 			c.ctx, c.bootstrapCluster, c.managementCluster, gomock.Any(), c.newClusterSpec, gomock.Any(),
 		),
+		c.clusterManager.EXPECT().ResumeCAPIWorkloadClusters(c.ctx, c.managementCluster),
 	)
 }
 
@@ -497,6 +512,42 @@ func TestUpgradeRunSuccess(t *testing.T) {
 	}
 }
 
+func TestUpgradeRunSuccessForceCleanup(t *testing.T) {
+	os.Unsetenv(features.CheckpointEnabledEnvVar)
+	test := newUpgradeSelfManagedClusterTest(t).WithForceCleanup()
+	test.expectSetup()
+	test.expectPreflightValidationsToPass()
+	test.expectUpdateSecrets(test.workloadCluster)
+	test.expectEnsureEtcdCAPIComponentsExistTask(test.workloadCluster)
+	test.expectUpgradeCoreComponents(test.workloadCluster, test.workloadCluster)
+	test.expectProviderNoUpgradeNeeded(test.workloadCluster)
+	test.expectVerifyClusterSpecChanged(test.workloadCluster)
+	test.expectPauseEKSAControllerReconcile(test.workloadCluster)
+	test.expectPauseGitOpsReconcile(test.workloadCluster)
+	test.expectForceCleanupBootstrap()
+	test.expectCreateBootstrap()
+	test.expectMoveManagementToBootstrap()
+	test.expectUpgradeWorkload(test.bootstrapCluster, test.workloadCluster)
+	test.expectMoveManagementToWorkload()
+	test.expectWriteClusterConfig()
+	test.expectDeleteBootstrap()
+	test.expectDatacenterConfig()
+	test.expectMachineConfigs()
+	test.expectCreateEKSAResources(test.workloadCluster)
+	test.expectInstallEksdManifest(test.workloadCluster)
+	test.expectResumeEKSAControllerReconcile(test.workloadCluster)
+	test.expectUpdateGitEksaSpec()
+	test.expectForceReconcileGitRepo(test.workloadCluster)
+	test.expectResumeGitOpsReconcile(test.workloadCluster)
+	test.expectPostBootstrapDeleteForUpgrade()
+	test.expectPreCoreComponentsUpgrade()
+
+	err := test.run()
+	if err != nil {
+		t.Fatalf("Upgrade.Run() err = %v, want err = nil", err)
+	}
+}
+
 func TestUpgradeRunProviderNeedsUpgradeSuccess(t *testing.T) {
 	os.Unsetenv(features.CheckpointEnabledEnvVar)
 	test := newUpgradeSelfManagedClusterTest(t)
@@ -528,6 +579,28 @@ func TestUpgradeRunProviderNeedsUpgradeSuccess(t *testing.T) {
 	err := test.run()
 	if err != nil {
 		t.Fatalf("Upgrade.Run() err = %v, want err = nil", err)
+	}
+}
+
+func TestUpgradeWorkloadRunFailedForceCleanupBootstrap(t *testing.T) {
+	os.Unsetenv(features.CheckpointEnabledEnvVar)
+	test := newUpgradeSelfManagedClusterTest(t).WithForceCleanup()
+	test.expectSetup()
+	test.expectPreflightValidationsToPass()
+	test.expectUpdateSecrets(test.workloadCluster)
+	test.expectEnsureEtcdCAPIComponentsExistTask(test.workloadCluster)
+	test.expectUpgradeCoreComponents(test.workloadCluster, test.workloadCluster)
+	test.expectProviderNoUpgradeNeeded(test.workloadCluster)
+	test.expectVerifyClusterSpecChanged(test.workloadCluster)
+	test.expectPauseEKSAControllerReconcile(test.workloadCluster)
+	test.expectPauseGitOpsReconcile(test.workloadCluster)
+	test.expectForceCleanupBootstrapError()
+	test.expectPreCoreComponentsUpgrade()
+	test.expectWriteCheckpointFile()
+
+	err := test.run()
+	if err == nil {
+		t.Fatal("Upgrade.Run() err = nil, want err not nil")
 	}
 }
 
