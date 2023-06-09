@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -211,8 +212,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 	}
 
 	defer func() {
+		// Patch the object, ignoring conflicts on the conditions owned by this controller.
+		options := []patch.Option{
+			patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
+				clusterv1.ReadyCondition,
+				clusterv1.ControlPlaneInitializedCondition,
+				anywherev1.DefaultCNIConfiguredCondition,
+				clusterv1.ControlPlaneReadyCondition,
+				anywherev1.WorkersReadyConditon,
+			}},
+		}
+
 		// Always attempt to patch the object and status after each reconciliation.
-		if err := patchHelper.Patch(ctx, cluster); err != nil {
+		if err := patchHelper.Patch(ctx, cluster, options...); err != nil {
 			reterr = kerrors.NewAggregate([]error{reterr, err})
 		}
 	}()
@@ -226,6 +238,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 		log.Info("Cluster reconciliation is paused")
 		return ctrl.Result{}, nil
 	}
+
+	// Set the obvervedGeneration, do this whether or not the operation succeeds.
 
 	// AddFinalizer	is idempotent
 	controllerutil.AddFinalizer(cluster, ClusterFinalizerName)
@@ -255,10 +269,36 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 		return ctrl.Result{}, nil
 	}
 
+	// If no changes in cluster generation, return without further processing. Updates to a status of
+	// a resource will trigger reconcilation. This is a problem if status is being updated in the controller
+	// and might result in infinite loop of update followed by a reconcile.
+
+	// if cluster.Generation == cluster.Status.ObservedGeneration {
+	// 	log.Info("Generation and observed generation match for cluster, skipping reconciliation.")
+	// 	return ctrl.Result{}, nil
+	// }
+
 	return r.reconcile(ctx, log, cluster, aggregatedGeneration)
 }
 
 func (r *ClusterReconciler) reconcile(ctx context.Context, log logr.Logger, cluster *anywherev1.Cluster, aggregatedGeneration int64) (ctrl.Result, error) {
+	// At the beginning of reconciliaton, we calculate the conditions of the cluster
+	// and then we update the cluster's status
+	r.updateClusterConditions(ctx, cluster)
+
+	defer func() {
+		// Always update the readyCondition by summarizing the state of other conditions.
+		conditions.SetSummary(cluster,
+			conditions.WithConditions(
+				anywherev1.DefaultCNIConfiguredCondition,
+				clusterv1.ControlPlaneReadyCondition,
+				anywherev1.WorkersReadyConditon,
+			),
+		)
+		// Always update observedGeneration after each reconciliation.
+		cluster.Status.ObservedGeneration = cluster.Generation
+	}()
+
 	clusterProviderReconciler := r.providerReconcilerRegistry.Get(cluster.Spec.DatacenterRef.Kind)
 
 	var reconcileResult controller.Result
@@ -467,4 +507,143 @@ func (r *ClusterReconciler) setBundlesRef(ctx context.Context, clus *anywherev1.
 	}
 	clus.Spec.BundlesRef = mgmtCluster.Spec.BundlesRef
 	return nil
+}
+
+func (r *ClusterReconciler) updateClusterConditions(ctx context.Context, cluster *anywherev1.Cluster) {
+	// Update Cluster ControlPlaneInitialized condition
+	r.updateControlPlaneInitializedCondition(ctx, cluster)
+
+	// Update Cluster ControlPlaneReady condition
+	r.updateControlPlaneReadyCondition(ctx, cluster)
+
+	// Update Cluster WorkersReady condition
+	r.updateWorkersReadyCondition(ctx, cluster)
+}
+
+// updateControlPlaneInitializedCondition updates the ControlPlaneInitialized condition if it hasn't already been set.
+// This condition should be set only once.
+func (r *ClusterReconciler) updateControlPlaneInitializedCondition(ctx context.Context, cluster *anywherev1.Cluster) {
+	// Return early if the ControlPlaneInitializedCondition is already "True"
+	if conditions.IsTrue(cluster, clusterv1.ControlPlaneInitializedCondition) {
+		return
+	}
+
+	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
+	if capiCluster == nil || err != nil {
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition, anywherev1.WaitingForCAPIClusterInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
+		return
+	}
+
+	initialized := conditions.IsTrue(capiCluster, clusterv1.ControlPlaneInitializedCondition)
+	if initialized {
+		conditions.MarkTrue(cluster, clusterv1.ControlPlaneInitializedCondition)
+	} else {
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition, clusterv1.WaitingForControlPlaneProviderInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for control plane provider to indicate the control plane has been initialized")
+	}
+}
+
+// updateControlPlaneReadyCondition updates the ControlPlaneReady condition based on the CAPI cluster contr.
+func (r *ClusterReconciler) updateControlPlaneReadyCondition(ctx context.Context, cluster *anywherev1.Cluster) {
+	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
+	if capiCluster == nil || err != nil {
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneReadyCondition, anywherev1.WaitingForCAPIClusterInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
+		return
+	}
+
+	// If the CAPICluster ControlPlaneReadyCondition is not True, then we can safely assume that the control plane isn't ready and
+	// Trickle down the condition to the Cluster status.  By checking the CAPI cluster first, we can capture all the exisitng reasons
+	// that this may not be true first.
+	if !conditions.IsTrue(capiCluster, clusterv1.ControlPlaneReadyCondition) {
+		conditions.Set(cluster, conditions.Get(capiCluster, clusterv1.ControlPlaneReadyCondition))
+		return
+	}
+
+	// We want to ensure that the condition of the current cluster matches the input Cluster after checking with the CAPI cluster,
+	// so, we do some further checks againts the Cluster machines to check if the expected control plane nodes have been actually rolled out
+	// and ready.
+	machines, err := controller.GetMachines(ctx, r.client, cluster)
+	if err != nil {
+		machines = []clusterv1.Machine{}
+	}
+
+	cpMachines := controller.ControlPlaneMachines(machines)
+	expected := cluster.Spec.ControlPlaneConfiguration.Count
+	ready := r.countMachinesReady(ctx,
+		cpMachines,
+		controller.WithNodeRef(),
+		controller.WithK8sVersion(cluster.Spec.KubernetesVersion),
+		controller.WithConditionReady(),
+		controller.WithNodeHealthy(),
+	)
+
+	if ready != expected {
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneReadyCondition, anywherev1.WaitingForControlPlaneNodesReadyReason, clusterv1.ConditionSeverityInfo, "Control plane nodes are not ready yet", "expected", expected, "ready", ready)
+		return
+	}
+
+	conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+}
+
+// updateWorkersReadyCondition updates the WorkersReadyConditon condition based on the CAPI cluster contr.
+func (r *ClusterReconciler) updateWorkersReadyCondition(ctx context.Context, cluster *anywherev1.Cluster) {
+	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
+	if capiCluster == nil || err != nil {
+		conditions.MarkFalse(cluster, anywherev1.WorkersReadyConditon, anywherev1.WaitingForCAPIClusterInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
+		return
+	}
+
+	// We want to ensure that the condition of the current cluster matches the input Cluster after checking with the CAPI cluster,
+	// so, we do some further checks againts the Cluster machines to check if the expected control plane nodes have been actually rolled out
+	// and ready.
+	machines, err := controller.GetMachines(ctx, r.client, cluster)
+	if err != nil {
+		machines = []clusterv1.Machine{}
+	}
+
+	cpMachines := controller.WorkerNodeMachines(machines)
+
+	expected := 0
+	for _, md := range cluster.Spec.WorkerNodeGroupConfigurations {
+		expected += *md.Count
+	}
+
+	ready := r.countMachinesReady(ctx,
+		cpMachines,
+		controller.WithNodeRef(),
+		controller.WithK8sVersion(cluster.Spec.KubernetesVersion),
+		controller.WithConditionReady(),
+		controller.WithNodeHealthy(),
+	)
+
+	if ready != expected {
+		conditions.MarkFalse(cluster, anywherev1.WorkersReadyConditon, anywherev1.WaitingForWorkerReadyReason, clusterv1.ConditionSeverityInfo, "Worker nodes are not ready yet", "expected", expected, "ready", ready)
+		return
+	}
+
+	conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+}
+
+func getExpectedClusterNodeCount(cluster *anywherev1.Cluster) int {
+	total := cluster.Spec.ControlPlaneConfiguration.Count
+	for _, md := range cluster.Spec.WorkerNodeGroupConfigurations {
+		total += *md.Count
+	}
+	return total
+}
+
+func (r *ClusterReconciler) countMachinesReady(ctx context.Context, machines []clusterv1.Machine, checkers ...controller.NodeReadyChecker) int {
+	ready := 0
+	for _, m := range machines {
+		passed := true
+		for _, checker := range checkers {
+			if !checker(m.Status) {
+				passed = false
+				break
+			}
+		}
+		if passed {
+			ready += 1
+		}
+	}
+	return ready
 }
