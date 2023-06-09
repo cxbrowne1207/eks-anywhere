@@ -212,6 +212,20 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 	}
 
 	defer func() {
+		r.reconcileClusterConditions(ctx, log, cluster)
+
+		// Always update the readyCondition by summarizing the state of other conditions.
+		conditions.SetSummary(cluster,
+			conditions.WithConditions(
+				anywherev1.DefaultCNIConfiguredCondition,
+				clusterv1.ControlPlaneReadyCondition,
+				anywherev1.WorkersReadyConditon,
+			),
+		)
+
+		// Always update observedGeneration after each reconciliation.
+		cluster.Status.ObservedGeneration = cluster.Generation
+
 		// Patch the object, ignoring conflicts on the conditions owned by this controller.
 		options := []patch.Option{
 			patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
@@ -264,41 +278,23 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 	// If there is no difference between the aggregated generation and childrenReconciledGeneration,
 	// and there is no difference in the reconciled generation and .metadata.generation of the cluster,
 	// then return without any further processing.
-	if aggregatedGeneration == cluster.Status.ChildrenReconciledGeneration && cluster.Status.ReconciledGeneration == cluster.Generation {
+	if aggregatedGeneration == cluster.Status.ChildrenReconciledGeneration &&
+		cluster.Status.ReconciledGeneration == cluster.Generation {
 		log.Info("Generation and aggregated generation match reconciled generations for cluster and child objects, skipping reconciliation.")
-		return ctrl.Result{}, nil
+
+		// At this point, if the Ready condition is still False, we need to requeue in order
+		// to give time for the conditions to get up to date.
+		if !conditions.IsTrue(cluster, clusterv1.ReadyCondition) {
+			return ctrl.Result{RequeueAfter: defaultRequeueTime}, nil
+		} else {
+			return ctrl.Result{}, nil
+		}
 	}
-
-	// If no changes in cluster generation, return without further processing. Updates to a status of
-	// a resource will trigger reconcilation. This is a problem if status is being updated in the controller
-	// and might result in infinite loop of update followed by a reconcile.
-
-	// if cluster.Generation == cluster.Status.ObservedGeneration {
-	// 	log.Info("Generation and observed generation match for cluster, skipping reconciliation.")
-	// 	return ctrl.Result{}, nil
-	// }
 
 	return r.reconcile(ctx, log, cluster, aggregatedGeneration)
 }
 
 func (r *ClusterReconciler) reconcile(ctx context.Context, log logr.Logger, cluster *anywherev1.Cluster, aggregatedGeneration int64) (ctrl.Result, error) {
-	// At the beginning of reconciliaton, we calculate the conditions of the cluster
-	// and then we update the cluster's status
-	r.updateClusterConditions(ctx, cluster)
-
-	defer func() {
-		// Always update the readyCondition by summarizing the state of other conditions.
-		conditions.SetSummary(cluster,
-			conditions.WithConditions(
-				anywherev1.DefaultCNIConfiguredCondition,
-				clusterv1.ControlPlaneReadyCondition,
-				anywherev1.WorkersReadyConditon,
-			),
-		)
-		// Always update observedGeneration after each reconciliation.
-		cluster.Status.ObservedGeneration = cluster.Generation
-	}()
-
 	clusterProviderReconciler := r.providerReconcilerRegistry.Get(cluster.Spec.DatacenterRef.Kind)
 
 	var reconcileResult controller.Result
@@ -322,6 +318,10 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, log logr.Logger, clus
 
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+
+	if reconcileResult.Return() {
+		return reconcileResult.ToCtrlResult(), nil
 	}
 
 	if reconcileResult.Return() {
@@ -509,53 +509,53 @@ func (r *ClusterReconciler) setBundlesRef(ctx context.Context, clus *anywherev1.
 	return nil
 }
 
-func (r *ClusterReconciler) updateClusterConditions(ctx context.Context, cluster *anywherev1.Cluster) {
-	// Update Cluster ControlPlaneInitialized condition
-	r.updateControlPlaneInitializedCondition(ctx, cluster)
+func (r *ClusterReconciler) reconcileClusterConditions(ctx context.Context, log logr.Logger, cluster *anywherev1.Cluster) error {
+	if err := r.updateControlPlaneInitializedCondition(ctx, log, cluster); err != nil {
+		return err
+	}
+	if err := r.updateControlPlaneReadyCondition(ctx, log, cluster); err != nil {
+		return err
+	}
+	if err := r.updateWorkersReadyCondition(ctx, log, cluster); err != nil {
+		return err
+	}
 
-	// Update Cluster ControlPlaneReady condition
-	r.updateControlPlaneReadyCondition(ctx, cluster)
-
-	// Update Cluster WorkersReady condition
-	r.updateWorkersReadyCondition(ctx, cluster)
+	return nil
 }
 
 // updateControlPlaneInitializedCondition updates the ControlPlaneInitialized condition if it hasn't already been set.
 // This condition should be set only once.
-func (r *ClusterReconciler) updateControlPlaneInitializedCondition(ctx context.Context, cluster *anywherev1.Cluster) {
+func (r *ClusterReconciler) updateControlPlaneInitializedCondition(ctx context.Context, log logr.Logger, cluster *anywherev1.Cluster) error {
 	// Return early if the ControlPlaneInitializedCondition is already "True"
 	if conditions.IsTrue(cluster, clusterv1.ControlPlaneInitializedCondition) {
-		return
+		return nil
+	}
+	// We can simply mirror this condition from the CAPI cluster
+	condition, err := r.getConditionFromCAPICluster(ctx, cluster, clusterv1.ControlPlaneInitializedCondition)
+	if err != nil {
+		return err
 	}
 
-	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
-	if capiCluster == nil || err != nil {
-		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition, anywherev1.WaitingForCAPIClusterInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
-		return
-	}
-
-	initialized := conditions.IsTrue(capiCluster, clusterv1.ControlPlaneInitializedCondition)
-	if initialized {
-		conditions.MarkTrue(cluster, clusterv1.ControlPlaneInitializedCondition)
-	} else {
-		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition, clusterv1.WaitingForControlPlaneProviderInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for control plane provider to indicate the control plane has been initialized")
-	}
+	conditions.Set(cluster, condition)
+	return nil
 }
 
-// updateControlPlaneReadyCondition updates the ControlPlaneReady condition based on the CAPI cluster contr.
-func (r *ClusterReconciler) updateControlPlaneReadyCondition(ctx context.Context, cluster *anywherev1.Cluster) {
-	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
-	if capiCluster == nil || err != nil {
-		conditions.MarkFalse(cluster, clusterv1.ControlPlaneReadyCondition, anywherev1.WaitingForCAPIClusterInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
-		return
+// updateControlPlaneReadyCondition updates the ControlPlaneReady condition based on the CAPI cluster condition
+// and also the conditions on the control plane machines. The condition is marked "True", once all the
+// requested control plane machines are ready.
+func (r *ClusterReconciler) updateControlPlaneReadyCondition(ctx context.Context, log logr.Logger, cluster *anywherev1.Cluster) error {
+
+	capiClusterCondition, err := r.getConditionFromCAPICluster(ctx, cluster, clusterv1.ControlPlaneReadyCondition)
+	if err != nil {
+		return err
 	}
 
-	// If the CAPICluster ControlPlaneReadyCondition is not True, then we can safely assume that the control plane isn't ready and
-	// Trickle down the condition to the Cluster status.  By checking the CAPI cluster first, we can capture all the exisitng reasons
+	// If the CAPICluster ControlPlaneReadyCondition is not "True", then we can assume that the control plane isn't ready and
+	// Mirror the condition to the Cluster status. By checking the CAPI cluster first, we can capture all the exisitng reasons
 	// that this may not be true first.
-	if !conditions.IsTrue(capiCluster, clusterv1.ControlPlaneReadyCondition) {
-		conditions.Set(cluster, conditions.Get(capiCluster, clusterv1.ControlPlaneReadyCondition))
-		return
+	if capiClusterCondition.Status != "True" {
+		conditions.Set(cluster, capiClusterCondition)
+		return nil
 	}
 
 	// We want to ensure that the condition of the current cluster matches the input Cluster after checking with the CAPI cluster,
@@ -563,10 +563,11 @@ func (r *ClusterReconciler) updateControlPlaneReadyCondition(ctx context.Context
 	// and ready.
 	machines, err := controller.GetMachines(ctx, r.client, cluster)
 	if err != nil {
-		machines = []clusterv1.Machine{}
+		return err
 	}
 
 	cpMachines := controller.ControlPlaneMachines(machines)
+
 	expected := cluster.Spec.ControlPlaneConfiguration.Count
 	ready := r.countMachinesReady(ctx,
 		cpMachines,
@@ -577,38 +578,31 @@ func (r *ClusterReconciler) updateControlPlaneReadyCondition(ctx context.Context
 	)
 
 	if ready != expected {
-		conditions.MarkFalse(cluster, clusterv1.ControlPlaneReadyCondition, anywherev1.WaitingForControlPlaneNodesReadyReason, clusterv1.ConditionSeverityInfo, "Control plane nodes are not ready yet", "expected", expected, "ready", ready)
-		return
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneReadyCondition, anywherev1.WaitingForControlPlaneNodesReadyReason, clusterv1.ConditionSeverityInfo, "Control plane nodes are not ready yet: %d replicas (ready %d)", expected, ready)
+		return nil
 	}
 
 	conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+	return nil
 }
 
-// updateWorkersReadyCondition updates the WorkersReadyConditon condition based on the CAPI cluster contr.
-func (r *ClusterReconciler) updateWorkersReadyCondition(ctx context.Context, cluster *anywherev1.Cluster) {
-	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
-	if capiCluster == nil || err != nil {
-		conditions.MarkFalse(cluster, anywherev1.WorkersReadyConditon, anywherev1.WaitingForCAPIClusterInitializedReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
-		return
-	}
-
-	// We want to ensure that the condition of the current cluster matches the input Cluster after checking with the CAPI cluster,
-	// so, we do some further checks againts the Cluster machines to check if the expected control plane nodes have been actually rolled out
-	// and ready.
+// updateWorkersReadyCondition updates the WorkersReadyConditon condition based on the CAPI cluster condition
+// and also the conditions on the worker machines. The condition is marked "True", once all the
+// requested worker machines are ready.
+func (r *ClusterReconciler) updateWorkersReadyCondition(ctx context.Context, log logr.Logger, cluster *anywherev1.Cluster) error {
 	machines, err := controller.GetMachines(ctx, r.client, cluster)
 	if err != nil {
-		machines = []clusterv1.Machine{}
+		return err
 	}
 
-	cpMachines := controller.WorkerNodeMachines(machines)
-
+	workerMachines := controller.WorkerNodeMachines(machines)
 	expected := 0
 	for _, md := range cluster.Spec.WorkerNodeGroupConfigurations {
 		expected += *md.Count
 	}
 
 	ready := r.countMachinesReady(ctx,
-		cpMachines,
+		workerMachines,
 		controller.WithNodeRef(),
 		controller.WithK8sVersion(cluster.Spec.KubernetesVersion),
 		controller.WithConditionReady(),
@@ -616,19 +610,29 @@ func (r *ClusterReconciler) updateWorkersReadyCondition(ctx context.Context, clu
 	)
 
 	if ready != expected {
-		conditions.MarkFalse(cluster, anywherev1.WorkersReadyConditon, anywherev1.WaitingForWorkerReadyReason, clusterv1.ConditionSeverityInfo, "Worker nodes are not ready yet", "expected", expected, "ready", ready)
-		return
+		conditions.MarkFalse(cluster, anywherev1.WorkersReadyConditon, anywherev1.WaitingForWorkersReadyReason, clusterv1.ConditionSeverityInfo, "Waiting for workers to be ready: %d replicas (ready %d)", expected, ready)
+		return nil
 	}
 
-	conditions.MarkTrue(cluster, clusterv1.ControlPlaneReadyCondition)
+	conditions.MarkTrue(cluster, anywherev1.WorkersReadyConditon)
+	return nil
 }
 
-func getExpectedClusterNodeCount(cluster *anywherev1.Cluster) int {
-	total := cluster.Spec.ControlPlaneConfiguration.Count
-	for _, md := range cluster.Spec.WorkerNodeGroupConfigurations {
-		total += *md.Count
+// getConditionFromCAPICluster checks the condition on the CAPI cluster for the provided condition.
+// If False, it mirrors the corresponding condition on the Cluster status.
+// It returns a bool indicating that the condition was "True" or not
+func (r *ClusterReconciler) getConditionFromCAPICluster(ctx context.Context, cluster *anywherev1.Cluster, condition clusterv1.ConditionType) (*clusterv1.Condition, error) {
+	noCAPIClusterCondition := conditions.FalseCondition(condition, anywherev1.WaitingForCAPIClusterReason, clusterv1.ConditionSeverityInfo, "Waiting for CAPI cluster to be initialized")
+	capiCluster, err := controller.GetCAPICluster(ctx, r.client, cluster)
+	if err != nil {
+		return noCAPIClusterCondition, err
 	}
-	return total
+
+	if capiCluster == nil {
+		return noCAPIClusterCondition, nil
+	}
+
+	return conditions.Get(capiCluster, condition), nil
 }
 
 func (r *ClusterReconciler) countMachinesReady(ctx context.Context, machines []clusterv1.Machine, checkers ...controller.NodeReadyChecker) int {

@@ -113,7 +113,7 @@ func ControlPlaneMachines(machines []clusterv1.Machine) []clusterv1.Machine {
 	filteredMachines := []clusterv1.Machine{}
 	for _, m := range machines {
 		if _, ok := m.ObjectMeta.Labels[clusterv1.MachineControlPlaneNameLabel]; ok {
-			machines = append(machines, m)
+			filteredMachines = append(filteredMachines, m)
 		}
 	}
 	return filteredMachines
@@ -124,7 +124,7 @@ func WorkerNodeMachines(machines []clusterv1.Machine) []clusterv1.Machine {
 	filteredMachines := []clusterv1.Machine{}
 	for _, m := range machines {
 		if _, ok := m.ObjectMeta.Labels[clusterv1.MachineDeploymentNameLabel]; ok {
-			filteredMachines = append(machines, m)
+			filteredMachines = append(filteredMachines, m)
 		}
 	}
 	return filteredMachines

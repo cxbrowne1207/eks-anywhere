@@ -7,13 +7,13 @@ import (
 // Conditions and condition Reasons for the Cluster object.
 
 const (
-	WaitingForCAPIClusterInitializedReason = "WaitingForCAPIClusterInitialized"
+	WaitingForCAPIClusterReason = "WaitingForCAPIClusterInitialized"
 
-	WaitingForControlPlaneNodesReadyReason = "WaitingForControlPlaneNodesReady"
+	WaitingForControlPlaneNodesReadyReason = "WaitingForControlPlaneReady"
 
 	WorkersReadyConditon clusterv1.ConditionType = "WorkersReady"
 
-	WaitingForWorkerReadyReason = "WaitingForWorkerReady"
+	WaitingForWorkersReadyReason = "WaitingForWorkersReady"
 
 	DefaultCNIConfiguredCondition clusterv1.ConditionType = "DefaultCNIConfigured"
 )
