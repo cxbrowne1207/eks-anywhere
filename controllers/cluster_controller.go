@@ -202,6 +202,8 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager, log logr.Logger) 
 // +kubebuilder:rbac:groups=packages.eks.amazonaws.com,resources=packages,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=packages.eks.amazonaws.com,namespace=eksa-system,resources=packagebundlecontrollers,verbs=delete
 // +kubebuilder:rbac:groups=anywhere.eks.amazonaws.com,namespace=eksa-system,resources=eksareleases,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=list
+// +kubebuilder:rbac:groups=apps,resources=daemonsets;deployments,verbs=list;watch
 
 // Reconcile reconciles a cluster object.
 // nolint:gocyclo
