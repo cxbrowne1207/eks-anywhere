@@ -101,6 +101,26 @@ func ReconcileControlPlane(ctx context.Context, c client.Client, cp *ControlPlan
 		clientutil.AddAnnotation(cp.KubeadmControlPlane, clusterv1.PausedAnnotation, "true")
 	}
 
+	kcp := &controlplanev1.KubeadmControlPlane{}
+	kcpKey := client.ObjectKeyFromObject(cp.KubeadmControlPlane)
+
+	if err = c.Get(ctx, kcpKey, kcp); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return controller.Result{}, errors.Wrap(err, "reading kubeadmcontrolplane object")
+		}
+		kcp = nil
+	}
+
+	// Here, the KubeadmControlPlane has been found if there are no errors,
+	// then we can check if the Endpoints for the external etcd have already been populated
+	// and override that on our KubeadmControlPlane object.
+	if kcp != nil {
+		externalEndpoints := kcp.Spec.KubeadmConfigSpec.ClusterConfiguration.Etcd.External.Endpoints
+		if len(externalEndpoints) != 0 {
+			cp.KubeadmControlPlane.Spec.KubeadmConfigSpec.ClusterConfiguration.Etcd.External.Endpoints = externalEndpoints
+		}
+	}
+
 	return controller.Result{}, applyAllControlPlaneObjects(ctx, c, cp)
 }
 
