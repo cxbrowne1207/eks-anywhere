@@ -234,11 +234,16 @@ func (s *upgradeCoreComponents) Run(ctx context.Context, commandContext *task.Co
 		return &CollectDiagnosticsTask{}
 	}
 
-	changeDiff, err := commandContext.ClusterManager.UpgradeNetworking(ctx, commandContext.WorkloadCluster, commandContext.CurrentClusterSpec, commandContext.ClusterSpec, commandContext.Provider)
-	if err != nil {
-		commandContext.SetError(err)
-		return &CollectDiagnosticsTask{}
-	}
+	// changeDiff, err := commandContext.ClusterManager.UpgradeNetworking(ctx, commandContext.WorkloadCluster, commandContext.CurrentClusterSpec, commandContext.ClusterSpec, commandContext.Provider)
+	// if err != nil {
+	// 	commandContext.SetError(err)
+	// 	return &CollectDiagnosticsTask{}
+	// }
+
+	logger.Info("Press enter to continue with the cleanup after you are done with your manual investigation: ")
+	fmt.Scanln()
+
+	changeDiff := &types.ChangeDiff{}
 	commandContext.UpgradeChangeDiff.Append(changeDiff)
 
 	changeDiff, err = commandContext.CAPIManager.Upgrade(ctx, commandContext.ManagementCluster, commandContext.Provider, commandContext.CurrentClusterSpec, commandContext.ClusterSpec)
