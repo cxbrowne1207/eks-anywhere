@@ -131,11 +131,17 @@ func readAndValidateClusterSpec(clusterConfigPath string, cliVersion version.Inf
 	return clusterSpec, nil
 }
 
-func newClusterSpec(options clusterOptions) (*cluster.Spec, error) {
+func fileSpecBuilderOptsFromClusterOptions(options clusterOptions) []cluster.FileSpecBuilderOpt {
 	var opts []cluster.FileSpecBuilderOpt
 	if options.bundlesOverride != "" {
 		opts = append(opts, cluster.WithOverrideBundlesManifest(options.bundlesOverride))
 	}
+
+	return opts
+}
+
+func newClusterSpec(options clusterOptions) (*cluster.Spec, error) {
+	opts := fileSpecBuilderOptsFromClusterOptions(options)
 
 	clusterSpec, err := readAndValidateClusterSpec(options.fileName, version.Get(), opts...)
 	if err != nil {
