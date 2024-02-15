@@ -6,8 +6,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/aws/eks-anywhere/cmd/eksctl-anywhere/cmd/aflag"
+	"github.com/aws/eks-anywhere/pkg/api/v1alpha1"
+	"github.com/aws/eks-anywhere/pkg/cluster"
 	"github.com/aws/eks-anywhere/pkg/dependencies"
 	"github.com/aws/eks-anywhere/pkg/kubeconfig"
+	"github.com/aws/eks-anywhere/pkg/registrymirror"
 	"github.com/aws/eks-anywhere/pkg/types"
 	"github.com/aws/eks-anywhere/pkg/workflows/management"
 )
@@ -34,7 +37,21 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 
-		clusterSpec, err := newClusterSpec(umco.clusterOptions)
+		kubectlFactory := dependencies.NewFactory().
+			WithKubectl()
+
+		kubectlFactoryDeps, err := kubectlFactory.Build(ctx)
+		if err != nil {
+			return err
+		}
+		defer close(cmd.Context(), kubectlFactoryDeps)
+
+		client, err := kubectlFactoryDeps.UnAuthKubeClient.BuildClientFromKubeconfig(kubeconfig.FromClusterName(umco.clusterOptions.fileName))
+		if err != nil {
+			return err
+		}
+
+		clusterConfig, err := v1alpha1.GetClusterConfig(umco.clusterOptions.fileName)
 		if err != nil {
 			return err
 		}
@@ -49,8 +66,8 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 			return err
 		}
 
-		if !clusterSpec.Cluster.IsSelfManaged() {
-			return fmt.Errorf("cluster %s doesn't contain management components to be upgraded", clusterSpec.Cluster.Name)
+		if !clusterConfig.IsSelfManaged() {
+			return fmt.Errorf("cluster %s doesn't contain management components to be upgraded", clusterConfig.Name)
 		}
 
 		cliConfig := buildCliConfig(clusterSpec)
@@ -59,13 +76,21 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 			return err
 		}
 
-		factory := dependencies.ForSpec(clusterSpec).WithExecutableMountDirs(dirs...).
+		managementComponents := cluster.ManagementComponentsFromBundles(bundles)
+		eksaToolsImage := managementComponents.Eksa.CliTools
+		factory := dependencies.NewFactory().
+			UseExecutableImage(eksaToolsImage.VersionedImage()).
+			WithRegistryMirror(registrymirror.FromCluster(clusterConfig)).
+			UseProxyConfiguration(clusterConfig.ProxyConfiguration()).
+			WithWriterFolder(clusterConfig.Name).
+			WithDiagnosticCollectorImage(managementComponents.Eksa.DiagnosticCollector.VersionedImage()).
+			WithExecutableMountDirs(dirs...).
 			WithBootstrapper().
 			WithCliConfig(cliConfig).
-			WithClusterManager(clusterSpec.Cluster, nil).
+			WithClusterManager(clusterConfig, nil).
 			WithClusterApplier().
-			WithProvider(umco.fileName, clusterSpec.Cluster, false, "", false, "", nil, nil).
-			WithGitOpsFlux(clusterSpec.Cluster, clusterSpec.FluxConfig, cliConfig).
+			WithProvider(umco.fileName, clusterConfig, false, "", false, "", nil, nil).
+			WithGitOpsFlux(clusterConfig, nil, nil).
 			WithWriter().
 			WithCAPIManager().
 			WithEksdUpgrader().
