@@ -19,7 +19,7 @@ func (s *createWorkloadClusterTask) Run(ctx context.Context, commandContext *tas
 	commandContext.ClusterSpec.Cluster.SetManagementComponentsVersion(commandContext.ClusterSpec.EKSARelease.Spec.Version)
 
 	if commandContext.ClusterSpec.Cluster.Namespace != "" {
-		if err := commandContext.ClusterManager.CreateNamespace(ctx, commandContext.BootstrapCluster, commandContext.ClusterSpec.Cluster.Namespace); err != nil {
+		if err := workflows.CreateNamespaceIfNotPresent(ctx, commandContext.ClusterSpec.Cluster.Namespace, commandContext.BootstrapCluster.KubeconfigFile, commandContext.ClientFactory); err != nil {
 			commandContext.SetError(err)
 			return &workflows.CollectMgmtClusterDiagnosticsTask{}
 		}
@@ -31,15 +31,6 @@ func (s *createWorkloadClusterTask) Run(ctx context.Context, commandContext *tas
 		return &workflows.CollectMgmtClusterDiagnosticsTask{}
 	}
 	commandContext.WorkloadCluster = workloadCluster
-
-	if commandContext.ClusterSpec.AWSIamConfig != nil {
-		logger.Info("Generating the aws iam kubeconfig file")
-		err = commandContext.ClusterManager.GenerateAWSIAMKubeconfig(ctx, commandContext.WorkloadCluster)
-		if err != nil {
-			commandContext.SetError(err)
-			return &workflows.CollectDiagnosticsTask{}
-		}
-	}
 
 	logger.Info("Creating EKS-A namespace")
 	err = commandContext.ClusterManager.CreateEKSANamespace(ctx, commandContext.WorkloadCluster)

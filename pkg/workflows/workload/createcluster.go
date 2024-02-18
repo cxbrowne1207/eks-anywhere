@@ -3,6 +3,7 @@ package workload
 import (
 	"context"
 
+	"github.com/aws/eks-anywhere/pkg/clustermarshaller"
 	"github.com/aws/eks-anywhere/pkg/logger"
 	"github.com/aws/eks-anywhere/pkg/task"
 	"github.com/aws/eks-anywhere/pkg/workflows"
@@ -15,7 +16,7 @@ func (c *createCluster) Run(ctx context.Context, commandContext *task.CommandCon
 	logger.Info("Creating workload cluster")
 
 	if commandContext.ClusterSpec.Cluster.Namespace != "" {
-		if err := commandContext.ClusterManager.CreateNamespace(ctx, commandContext.ManagementCluster, commandContext.ClusterSpec.Cluster.Namespace); err != nil {
+		if err := workflows.CreateNamespaceIfNotPresent(ctx, commandContext.ClusterSpec.Cluster.Namespace, commandContext.ManagementCluster.KubeconfigFile, commandContext.ClientFactory); err != nil {
 			commandContext.SetError(err)
 			return &workflows.CollectMgmtClusterDiagnosticsTask{}
 		}
@@ -27,6 +28,15 @@ func (c *createCluster) Run(ctx context.Context, commandContext *task.CommandCon
 		return &workflows.CollectMgmtClusterDiagnosticsTask{}
 	}
 	commandContext.WorkloadCluster = workloadCluster
+
+	datacenterConfig := commandContext.Provider.DatacenterConfig(commandContext.ClusterSpec)
+	machineConfigs := commandContext.Provider.MachineConfigs(commandContext.ClusterSpec)
+
+	resourcesSpec, err := clustermarshaller.MarshalClusterSpec(commandContext.ClusterSpec, datacenterConfig, machineConfigs)
+	if err != nil {
+		commandContext.SetError(err)
+	}
+	logger.V(6).Info(string(resourcesSpec))
 
 	return &installGitOpsManagerTask{}
 }

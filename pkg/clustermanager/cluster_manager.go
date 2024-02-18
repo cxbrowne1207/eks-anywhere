@@ -1375,6 +1375,19 @@ func (c *ClusterManager) RemoveManagedByCLIAnnotationForCluster(ctx context.Cont
 	return nil
 }
 
+// AddManagedByCLIAnnotationForCluster removes the managed-by-cli annotation from the cluster.
+func (c *ClusterManager) AddManagedByCLIAnnotationForCluster(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec, provider providers.Provider) error {
+	err := c.clusterClient.UpdateAnnotationInNamespace(ctx, clusterSpec.Cluster.ResourceType(),
+		cluster.Name,
+		map[string]string{v1alpha1.ManagedByCLIAnnotation: "true"},
+		cluster,
+		clusterSpec.Cluster.Namespace)
+	if err != nil {
+		return fmt.Errorf("adding managed by CLI annotation after apply cluster spec: %v", err)
+	}
+	return nil
+}
+
 func (c *ClusterManager) applyResource(ctx context.Context, cluster *types.Cluster, resourcesSpec []byte) error {
 	err := c.clusterClient.ApplyKubeSpecFromBytes(ctx, cluster, resourcesSpec)
 	if err != nil {
@@ -1402,11 +1415,6 @@ func (c *ClusterManager) buildSpecForCluster(ctx context.Context, clus *types.Cl
 
 func (c *ClusterManager) DeletePackageResources(ctx context.Context, managementCluster *types.Cluster, clusterName string) error {
 	return c.clusterClient.DeletePackageResources(ctx, managementCluster, clusterName)
-}
-
-// CreateNamespace creates a namespace on the target cluster if it does not already exist.
-func (c *ClusterManager) CreateNamespace(ctx context.Context, targetCluster *types.Cluster, namespace string) error {
-	return c.clusterClient.CreateNamespaceIfNotPresent(ctx, targetCluster.KubeconfigFile, namespace)
 }
 
 func (c *ClusterManager) getUpgraderImagesFromBundle(ctx context.Context, cluster *types.Cluster, cl *cluster.Spec) (*corev1.ConfigMap, error) {

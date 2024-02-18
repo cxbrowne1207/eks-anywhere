@@ -311,6 +311,29 @@ func (c *Cluster) ClearManagedByCLIAnnotation() {
 	}
 }
 
+// AddTinkerbellIPAnnotation adds the managed-by-cli annotation to the cluster.
+func (c *Cluster) AddTinkerbellIPAnnotation(tinkerbellIP string) {
+	if c.Annotations == nil {
+		c.Annotations = map[string]string{}
+	}
+	c.Annotations[tinkerbellIPAnnotation] = tinkerbellIP
+}
+
+// ClearTinkerbellIPAnnotation removes the managed-by-cli annotation from the cluster.
+func (c *Cluster) ClearTinkerbellIPAnnotation() {
+	if c.Annotations != nil {
+		delete(c.Annotations, tinkerbellIPAnnotation)
+	}
+}
+
+// HasTinkerbellIPAnnotation returns the tinkerbell IP value if the annotation exists.
+func (c *Cluster) HasTinkerbellIPAnnotation() string {
+	if tinkerbellIP, ok := c.Annotations[tinkerbellIPAnnotation]; ok {
+		return tinkerbellIP
+	}
+	return ""
+}
+
 // RegistryAuth returns whether registry requires authentication or not.
 func (c *Cluster) RegistryAuth() bool {
 	if c.Spec.RegistryMirrorConfiguration == nil {
@@ -412,7 +435,7 @@ func validateControlPlaneReplicas(clusterConfig *Cluster) error {
 		return nil
 	}
 	if clusterConfig.Spec.ControlPlaneConfiguration.Count%2 == 0 {
-		return errors.New("control plane node count cannot be an even number")
+		return errors.New("control plane node count cannot be an even number when using stacked etcd topology")
 	}
 	if clusterConfig.Spec.ControlPlaneConfiguration.Count != 3 && clusterConfig.Spec.ControlPlaneConfiguration.Count != 5 {
 		if clusterConfig.Spec.DatacenterRef.Kind != DockerDatacenterKind {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clusterctlv1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -579,7 +580,7 @@ func (f *Factory) withMachineHealthCheckReconciler() *Factory {
 			return nil
 		}
 
-		machineHealthCheckDefaulter := anywhereCluster.NewMachineHealthCheckDefaulter(constants.DefaultNodeStartupTimeout, constants.DefaultUnhealthyMachineTimeout)
+		machineHealthCheckDefaulter := anywhereCluster.NewMachineHealthCheckDefaulter(constants.DefaultNodeStartupTimeout, constants.DefaultUnhealthyMachineTimeout, intstr.Parse(constants.DefaultMaxUnhealthy), intstr.Parse(constants.DefaultWorkerMaxUnhealthy))
 
 		f.machineHealthCheckReconciler = mhcreconciler.New(
 			f.manager.GetClient(),
@@ -628,6 +629,7 @@ func (f *Factory) WithMachineDeploymentReconciler() *Factory {
 
 // WithControlPlaneUpgradeReconciler builds the ControlPlaneUpgrade reconciler.
 func (f *Factory) WithControlPlaneUpgradeReconciler() *Factory {
+	f.withTracker()
 	f.buildSteps = append(f.buildSteps, func(ctx context.Context) error {
 		if f.reconcilers.ControlPlaneUpgradeReconciler != nil {
 			return nil
@@ -635,6 +637,7 @@ func (f *Factory) WithControlPlaneUpgradeReconciler() *Factory {
 
 		f.reconcilers.ControlPlaneUpgradeReconciler = NewControlPlaneUpgradeReconciler(
 			f.manager.GetClient(),
+			f.tracker,
 		)
 
 		return nil

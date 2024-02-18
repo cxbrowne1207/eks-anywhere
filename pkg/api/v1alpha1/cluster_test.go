@@ -1616,6 +1616,23 @@ func TestCluster_AddRemoveManagedByCLIAnnotation(t *testing.T) {
 	g.Expect(ok).To(BeFalse())
 }
 
+func TestClusterClearTinkerbellIPAnnotation(t *testing.T) {
+	g := NewWithT(t)
+	c := &Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cluster_test",
+		},
+	}
+	c.AddTinkerbellIPAnnotation("1.1.1.1")
+	val := c.HasTinkerbellIPAnnotation()
+
+	g.Expect(val).To(ContainSubstring("1.1.1.1"))
+
+	c.ClearTinkerbellIPAnnotation()
+	val = c.Annotations[tinkerbellIPAnnotation]
+	g.Expect(val).To(BeEmpty())
+}
+
 func TestGitOpsEquals(t *testing.T) {
 	tests := []struct {
 		name string
@@ -3307,6 +3324,76 @@ func TestValidateControlPlaneEndpoint(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 			err := validateControlPlaneEndpoint(tt.cluster)
+			if tt.wantErr == "" {
+				g.Expect(err).To(BeNil())
+			} else {
+				g.Expect(err).To(MatchError(ContainSubstring(tt.wantErr)))
+			}
+		})
+	}
+}
+
+func TestValidateControlPlaneReplicas(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr string
+		cluster *Cluster
+	}{
+		{
+			name:    "Odd CP replicas with stacked etcd",
+			wantErr: "",
+			cluster: &Cluster{
+				Spec: ClusterSpec{
+					ControlPlaneConfiguration: ControlPlaneConfiguration{
+						Count: 3,
+					},
+				},
+			},
+		},
+		{
+			name:    "Even CP replicas with stacked etcd",
+			wantErr: "control plane node count cannot be an even number when using stacked etcd topology",
+			cluster: &Cluster{
+				Spec: ClusterSpec{
+					ControlPlaneConfiguration: ControlPlaneConfiguration{
+						Count: 2,
+					},
+				},
+			},
+		},
+		{
+			name:    "Odd CP replicas with unstacked etcd",
+			wantErr: "",
+			cluster: &Cluster{
+				Spec: ClusterSpec{
+					ControlPlaneConfiguration: ControlPlaneConfiguration{
+						Count: 3,
+					},
+					ExternalEtcdConfiguration: &ExternalEtcdConfiguration{
+						Count: 1,
+					},
+				},
+			},
+		},
+		{
+			name:    "Odd CP replicas with unstacked etcd",
+			wantErr: "",
+			cluster: &Cluster{
+				Spec: ClusterSpec{
+					ControlPlaneConfiguration: ControlPlaneConfiguration{
+						Count: 2,
+					},
+					ExternalEtcdConfiguration: &ExternalEtcdConfiguration{
+						Count: 1,
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			err := validateControlPlaneReplicas(tt.cluster)
 			if tt.wantErr == "" {
 				g.Expect(err).To(BeNil())
 			} else {

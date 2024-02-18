@@ -22,7 +22,6 @@ import (
 	"github.com/aws/eks-anywhere/pkg/validations"
 	"github.com/aws/eks-anywhere/pkg/validations/createvalidations"
 	newManagement "github.com/aws/eks-anywhere/pkg/workflow/management"
-	"github.com/aws/eks-anywhere/pkg/workflows"
 	"github.com/aws/eks-anywhere/pkg/workflows/management"
 	"github.com/aws/eks-anywhere/pkg/workflows/workload"
 )
@@ -208,17 +207,6 @@ func (cc *createClusterOptions) createCluster(cmd *cobra.Command, _ []string) er
 		return err
 	}
 
-	createCluster := workflows.NewCreate(
-		deps.UnAuthKubeClient,
-		deps.Bootstrapper,
-		deps.Provider,
-		deps.ClusterManager,
-		deps.GitOpsFlux,
-		deps.Writer,
-		deps.EksdInstaller,
-		deps.PackageInstaller,
-	)
-
 	mgmt := getManagementCluster(clusterSpec)
 
 	validationOpts := &validations.Opts{
@@ -270,14 +258,16 @@ func (cc *createClusterOptions) createCluster(cmd *cobra.Command, _ []string) er
 			deps.EksdInstaller,
 			deps.PackageInstaller,
 			deps.ClusterCreator,
+			deps.UnAuthKubectlClient,
 		)
 		err = createWorkloadCluster.Run(ctx, clusterSpec, createValidations)
 
-	} else if clusterSpec.Cluster.IsSelfManaged() && features.UseControllerViaCLIWorkflow().IsActive() {
+	} else if clusterSpec.Cluster.IsSelfManaged() {
 		logger.Info("Using the new workflow using the controller for management cluster create")
 
 		createMgmtCluster := management.NewCreate(
 			deps.Bootstrapper,
+			deps.UnAuthKubeClient,
 			deps.Provider,
 			deps.ClusterManager,
 			deps.GitOpsFlux,
@@ -289,8 +279,6 @@ func (cc *createClusterOptions) createCluster(cmd *cobra.Command, _ []string) er
 		)
 
 		err = createMgmtCluster.Run(ctx, clusterSpec, createValidations)
-	} else {
-		err = createCluster.Run(ctx, clusterSpec, createValidations, cc.forceClean)
 	}
 
 	cleanup(deps, &err)

@@ -139,14 +139,14 @@ func (d *Dependencies) Close(ctx context.Context) error {
 
 // ForSpec constructs a Factory using the bundle referenced by clusterSpec.
 func ForSpec(clusterSpec *cluster.Spec) *Factory {
-	versionsBundle := clusterSpec.RootVersionsBundle()
-	eksaToolsImage := versionsBundle.Eksa.CliTools
+	managementComponents := cluster.ManagementComponentsFromBundles(clusterSpec.Bundles)
+	eksaToolsImage := managementComponents.Eksa.CliTools
 	return NewFactory().
 		UseExecutableImage(eksaToolsImage.VersionedImage()).
 		WithRegistryMirror(registrymirror.FromCluster(clusterSpec.Cluster)).
 		UseProxyConfiguration(clusterSpec.Cluster.ProxyConfiguration()).
 		WithWriterFolder(clusterSpec.Cluster.Name).
-		WithDiagnosticCollectorImage(versionsBundle.Eksa.DiagnosticCollector.VersionedImage())
+		WithDiagnosticCollectorImage(managementComponents.Eksa.DiagnosticCollector.VersionedImage())
 }
 
 // Factory helps initialization.
@@ -951,8 +951,9 @@ func (f *Factory) WithCiliumTemplater() *Factory {
 	return f
 }
 
-func (f *Factory) WithAwsIamAuth() *Factory {
-	f.WithKubectl().WithWriter()
+// WithAwsIamAuth builds dependencies for AWS IAM Auth.
+func (f *Factory) WithAwsIamAuth(clusterConfig *v1alpha1.Cluster) *Factory {
+	f.WithKubectl().WithWriter().WithKubeconfigWriter(clusterConfig)
 
 	f.buildSteps = append(f.buildSteps, func(ctx context.Context) error {
 		if f.dependencies.AwsIamAuth != nil {
@@ -971,6 +972,7 @@ func (f *Factory) WithAwsIamAuth() *Factory {
 			clusterId,
 			awsiamauth.NewRetrierClient(f.dependencies.Kubectl, opts...),
 			f.dependencies.Writer,
+			f.dependencies.KubeconfigWriter,
 		)
 		return nil
 	})
@@ -1067,7 +1069,7 @@ func (f *Factory) clusterManagerOpts(timeoutOpts *ClusterManagerTimeoutOptions) 
 
 // WithClusterManager builds a cluster manager based on the cluster config and timeout options.
 func (f *Factory) WithClusterManager(clusterConfig *v1alpha1.Cluster, timeoutOpts *ClusterManagerTimeoutOptions) *Factory {
-	f.WithClusterctl().WithNetworking(clusterConfig).WithWriter().WithDiagnosticBundleFactory().WithAwsIamAuth().WithFileReader().WithUnAuthKubeClient().WithKubernetesRetrierClient().WithEKSAInstaller()
+	f.WithClusterctl().WithNetworking(clusterConfig).WithWriter().WithDiagnosticBundleFactory().WithAwsIamAuth(clusterConfig).WithFileReader().WithUnAuthKubeClient().WithKubernetesRetrierClient().WithEKSAInstaller()
 
 	f.buildSteps = append(f.buildSteps, func(ctx context.Context) error {
 		if f.dependencies.ClusterManager != nil {
@@ -1161,7 +1163,7 @@ func (f *Factory) WithCliConfig(cliConfig *cliconfig.CliConfig) *Factory {
 func (f *Factory) WithCreateClusterDefaulter(createCliConfig *cliconfig.CreateClusterCLIConfig) *Factory {
 	f.buildSteps = append(f.buildSteps, func(ctx context.Context) error {
 		controlPlaneIPCheckAnnotationDefaulter := cluster.NewControlPlaneIPCheckAnnotationDefaulter(createCliConfig.SkipCPIPCheck)
-		machineHealthCheckDefaulter := cluster.NewMachineHealthCheckDefaulter(createCliConfig.NodeStartupTimeout, createCliConfig.UnhealthyMachineTimeout)
+		machineHealthCheckDefaulter := cluster.NewMachineHealthCheckDefaulter(createCliConfig.NodeStartupTimeout, createCliConfig.UnhealthyMachineTimeout, createCliConfig.MaxUnhealthy, createCliConfig.WorkerMaxUnhealthy)
 
 		createClusterDefaulter := cli.NewCreateClusterDefaulter(controlPlaneIPCheckAnnotationDefaulter, machineHealthCheckDefaulter)
 
@@ -1176,7 +1178,7 @@ func (f *Factory) WithCreateClusterDefaulter(createCliConfig *cliconfig.CreateCl
 // WithUpgradeClusterDefaulter builds a create cluster defaulter that builds defaulter dependencies specific to the create cluster command. The defaulter is then run once the factory is built in the create cluster command.
 func (f *Factory) WithUpgradeClusterDefaulter(upgradeCliConfig *cliconfig.UpgradeClusterCLIConfig) *Factory {
 	f.buildSteps = append(f.buildSteps, func(ctx context.Context) error {
-		machineHealthCheckDefaulter := cluster.NewMachineHealthCheckDefaulter(upgradeCliConfig.NodeStartupTimeout, upgradeCliConfig.UnhealthyMachineTimeout)
+		machineHealthCheckDefaulter := cluster.NewMachineHealthCheckDefaulter(upgradeCliConfig.NodeStartupTimeout, upgradeCliConfig.UnhealthyMachineTimeout, upgradeCliConfig.MaxUnhealthy, upgradeCliConfig.WorkerMaxUnhealthy)
 
 		upgradeClusterDefaulter := cli.NewUpgradeClusterDefaulter(machineHealthCheckDefaulter)
 

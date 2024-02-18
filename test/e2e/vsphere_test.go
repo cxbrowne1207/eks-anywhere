@@ -3336,6 +3336,41 @@ func TestVSphereKubernetes128To129UbuntuUpgradeFromLatestMinorRelease(t *testing
 	)
 }
 
+func TestVSphereKubernetes128To129UbuntuInPlaceUpgradeFromLatestMinorRelease(t *testing.T) {
+	release := latestMinorRelease(t)
+	provider := framework.NewVSphere(
+		t,
+		framework.WithVSphereFillers(
+			api.WithOsFamilyForAllMachines(v1alpha1.Ubuntu),
+		),
+		framework.WithKubeVersionAndOSForRelease(v1alpha1.Kube128, framework.Ubuntu2004, release),
+	)
+	test := framework.NewClusterE2ETest(
+		t,
+		provider,
+		framework.WithEnvVar(features.VSphereInPlaceEnvVar, "true"),
+	)
+	test.GenerateClusterConfigForVersion(release.Version, framework.ExecuteWithEksaRelease(release))
+	test.UpdateClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithKubernetesVersion(v1alpha1.Kube128),
+			api.WithStackedEtcdTopology(),
+		),
+		api.VSphereToConfigFiller(
+			api.RemoveEtcdVsphereMachineConfig(),
+		),
+	)
+	runInPlaceUpgradeFromReleaseFlow(
+		test,
+		release,
+		framework.WithClusterUpgrade(
+			api.WithKubernetesVersion(v1alpha1.Kube129),
+			api.WithInPlaceUpgradeStrategy(),
+		),
+		provider.WithProviderUpgrade(provider.Ubuntu129Template()),
+	)
+}
+
 func TestVSphereKubernetes128BottlerocketAndRemoveWorkerNodeGroups(t *testing.T) {
 	provider := framework.NewVSphere(t,
 		framework.WithVSphereWorkerNodeGroup(
@@ -3596,6 +3631,58 @@ func TestVSphereKubernetes128UbuntuTo129InPlaceUpgrade_3CP_3Worker(t *testing.T)
 		test,
 		framework.WithClusterUpgrade(api.WithKubernetesVersion(v1alpha1.Kube129)),
 		provider.WithProviderUpgrade(provider.Ubuntu129Template()),
+	)
+}
+
+func TestVSphereKubernetes125UbuntuTo128InPlaceUpgrade(t *testing.T) {
+	var kube126clusterOpts []framework.ClusterE2ETestOpt
+	var kube127clusterOpts []framework.ClusterE2ETestOpt
+	var kube128clusterOpts []framework.ClusterE2ETestOpt
+	provider := framework.NewVSphere(t, framework.WithUbuntu125())
+	test := framework.NewClusterE2ETest(
+		t,
+		provider,
+		framework.WithEnvVar(features.VSphereInPlaceEnvVar, "true"),
+	).WithClusterConfig(
+		api.ClusterToConfigFiller(
+			api.WithKubernetesVersion(v1alpha1.Kube125),
+			api.WithStackedEtcdTopology(),
+			api.WithInPlaceUpgradeStrategy(),
+		),
+		api.VSphereToConfigFiller(
+			api.RemoveEtcdVsphereMachineConfig(),
+		),
+		provider.WithKubeVersionAndOS(v1alpha1.Kube125, framework.Ubuntu2004, nil),
+	)
+	kube126clusterOpts = append(
+		kube126clusterOpts,
+		framework.WithClusterUpgrade(
+			api.WithKubernetesVersion(v1alpha1.Kube126),
+			api.WithInPlaceUpgradeStrategy(),
+		),
+		provider.WithProviderUpgrade(provider.Ubuntu126Template()),
+	)
+	kube127clusterOpts = append(
+		kube127clusterOpts,
+		framework.WithClusterUpgrade(
+			api.WithKubernetesVersion(v1alpha1.Kube127),
+			api.WithInPlaceUpgradeStrategy(),
+		),
+		provider.WithProviderUpgrade(provider.Ubuntu127Template()),
+	)
+	kube128clusterOpts = append(
+		kube128clusterOpts,
+		framework.WithClusterUpgrade(
+			api.WithKubernetesVersion(v1alpha1.Kube128),
+			api.WithInPlaceUpgradeStrategy(),
+		),
+		provider.WithProviderUpgrade(provider.Ubuntu128Template()),
+	)
+	runInPlaceMultipleUpgradesFlow(
+		test,
+		kube126clusterOpts,
+		kube127clusterOpts,
+		kube128clusterOpts,
 	)
 }
 
