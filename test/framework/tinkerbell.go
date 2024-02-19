@@ -344,6 +344,11 @@ func Ubuntu129Image() api.TinkerbellFiller {
 	return imageForKubeVersionAndOS(anywherev1.Kube129, Ubuntu2004, "")
 }
 
+// RedHat129Image represents an RedHat raw image corresponding to Kubernetes 1.29.
+func RedHat129Image() api.TinkerbellFiller {
+	return imageForKubeVersionAndOS(anywherev1.Kube129, RedHat8, "")
+}
+
 // Ubuntu126ImageForCP represents an Ubuntu raw image corresponding to Kubernetes 1.28 and is set for CP machine config.
 func Ubuntu126ImageForCP() api.TinkerbellFiller {
 	return imageForKubeVersionAndOS(anywherev1.Kube126, Ubuntu2004, controlPlaneIdentifier)
@@ -402,4 +407,9 @@ func Ubuntu2204Kubernetes128Image() api.TinkerbellFiller {
 // Ubuntu2204Kubernetes129Image represents an Ubuntu 22.04 raw image corresponding to Kubernetes 1.29.
 func Ubuntu2204Kubernetes129Image() api.TinkerbellFiller {
 	return imageForKubeVersionAndOS(anywherev1.Kube129, Ubuntu2204, "")
+}
+
+// Bottlerocket129Image represents an Bottlerocket raw image corresponding to Kubernetes 1.29.
+func Bottlerocket129Image() api.TinkerbellFiller {
+	return imageForKubeVersionAndOS(anywherev1.Kube129, Bottlerocket1, "")
 }

@@ -380,6 +380,40 @@ func TestTinkerbellKubernetes125UbuntuAddWorkerNodeGroupWithAPI(t *testing.T) {
 	)
 }
 
+func TestTinkerbellKubernetes128To129RedHatUpgrade(t *testing.T) {
+	provider := framework.NewTinkerbell(t, framework.WithRedHat128Tinkerbell())
+	test := framework.NewClusterE2ETest(
+		t,
+		provider,
+		framework.WithClusterFiller(api.WithKubernetesVersion(v1alpha1.Kube128)),
+		framework.WithControlPlaneHardware(2),
+		framework.WithWorkerHardware(2),
+	)
+	runSimpleUpgradeFlowForBareMetal(
+		test,
+		v1alpha1.Kube129,
+		framework.WithClusterUpgrade(api.WithKubernetesVersion(v1alpha1.Kube129)),
+		provider.WithProviderUpgrade(framework.RedHat129Image()),
+	)
+}
+
+func TestTinkerbellKubernetes128To129BottlerocketUpgrade(t *testing.T) {
+	provider := framework.NewTinkerbell(t, framework.WithBottleRocketTinkerbell())
+	test := framework.NewClusterE2ETest(
+		t,
+		provider,
+		framework.WithClusterFiller(api.WithKubernetesVersion(v1alpha1.Kube128)),
+		framework.WithControlPlaneHardware(2),
+		framework.WithWorkerHardware(2),
+	)
+	runSimpleUpgradeFlowForBareMetal(
+		test,
+		v1alpha1.Kube129,
+		framework.WithClusterUpgrade(api.WithKubernetesVersion(v1alpha1.Kube129)),
+		provider.WithProviderUpgrade(framework.Bottlerocket129Image()),
+	)
+}
+
 func TestTinkerbellKubernetes125UbuntuTo126InPlaceUpgrade_1CP_1Worker(t *testing.T) {
 	provider := framework.NewTinkerbell(t)
 	test := framework.NewClusterE2ETest(
