@@ -953,6 +953,9 @@ const (
 
 	// EksaVersionInvalidReason reports that the Cluster eksaVersion validation has failed.
 	EksaVersionInvalidReason FailureReasonType = "EksaVersionInvalid"
+
+	// ProviderReconcileFailedReason reports that the provider reconciliation has failed.
+	ProviderReconcileFailedReason FailureReasonType = "ProviderReconcileFailed"
 )
 
 // Reasons for the terminal failures while reconciling the Cluster object specific for Tinkerbell.

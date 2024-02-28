@@ -320,8 +320,10 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, log logr.Logger, clus
 	}
 
 	reconcileResult, err = clusterProviderReconciler.Reconcile(ctx, log, cluster)
-
 	if err != nil {
+		if !cluster.HasFailure() {
+			cluster.SetFailure(anywherev1.ProviderReconcileFailedReason, err.Error())
+		}
 		return ctrl.Result{}, err
 	}
 
