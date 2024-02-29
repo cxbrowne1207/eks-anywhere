@@ -39,12 +39,12 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 			return err
 		}
 
-		bundles, err := newBundles(umco.clusterOptions)
+		bundles, err := getBundles(umco.clusterOptions)
 		if err != nil {
 			return err
 		}
 
-		eksaRelease, err := newEKSARelease(bundles, umco.clusterOptions)
+		eksaRelease, err := getEksaRelease(bundles, umco.clusterOptions)
 		if err != nil {
 			return err
 		}
