@@ -14,7 +14,6 @@ import (
 	"github.com/aws/eks-anywhere/pkg/validations"
 	"github.com/aws/eks-anywhere/pkg/workflows"
 	"github.com/aws/eks-anywhere/pkg/workflows/interfaces"
-	releasev1alpha1 "github.com/aws/eks-anywhere/release/api/v1alpha1"
 )
 
 // UpgradeManagementComponentsWorkflow is a schema for upgrade management components.
@@ -89,14 +88,14 @@ func (u *UMCValidator) PreflightValidations(ctx context.Context) []validations.V
 }
 
 // Run Upgrade implements upgrade functionality for management cluster's upgrade operation.
-func (umc *UpgradeManagementComponentsWorkflow) Run(ctx context.Context, bundles *releasev1alpha1.Bundles, eksaRelease *releasev1alpha1.EKSARelease, clusterSpec *cluster.Spec, managementCluster *types.Cluster, validator interfaces.Validator) error {
+func (umc *UpgradeManagementComponentsWorkflow) Run(ctx context.Context, release *cluster.Release, clusterSpec *cluster.Spec, managementCluster *types.Cluster, validator interfaces.Validator) error {
 	commandContext := &task.CommandContext{
 		ClientFactory:     umc.clientFactory,
 		Provider:          umc.provider,
 		ClusterManager:    umc.clusterManager,
 		ManagementCluster: managementCluster,
-		Bundles:           bundles,
-		EKSARelease:       eksaRelease,
+
+		Release:           release,
 		ClusterSpec:       clusterSpec,
 		Validations:       validator,
 		Writer:            umc.writer,

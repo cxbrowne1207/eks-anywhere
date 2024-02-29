@@ -80,11 +80,13 @@ func NewClusterSpec(opts ...ClusterSpecOpt) *cluster.Spec {
 }
 
 func NewFullClusterSpec(t *testing.T, clusterConfigFile string) *cluster.Spec {
-	b := cluster.NewFileSpecBuilder(
-		files.NewReader(files.WithEmbedFS(configFS)),
+	reader := files.NewReader(files.WithEmbedFS(configFS))
+	rb := cluster.NewReleaseBuilder(
+		reader,
 		version.Info{GitVersion: "v0.19.0-dev+latest"},
 		cluster.WithReleasesManifest("embed:///testdata/releases.yaml"),
 	)
+	b := cluster.NewFileSpecBuilder(reader, rb)
 	s, err := b.Build(clusterConfigFile)
 	if err != nil {
 		t.Fatalf("can't build cluster spec for tests: %v", err)

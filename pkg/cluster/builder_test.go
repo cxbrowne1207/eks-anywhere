@@ -5,8 +5,6 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	"github.com/aws/eks-anywhere/internal/test"
-	"github.com/aws/eks-anywhere/pkg/api/v1alpha1"
 	"github.com/aws/eks-anywhere/pkg/cluster"
 	"github.com/aws/eks-anywhere/pkg/files"
 	"github.com/aws/eks-anywhere/pkg/version"
@@ -56,7 +54,9 @@ func TestFileSpecBuilderBuildError(t *testing.T) {
 
 			v := version.Info{GitVersion: tt.cliVersion}
 			reader := files.NewReader()
-			b := cluster.NewFileSpecBuilder(reader, v, cluster.WithReleasesManifest(tt.releaseURL))
+			rb := cluster.NewReleaseBuilder(reader, v,
+				cluster.WithReleasesManifest(tt.releaseURL))
+			b := cluster.NewFileSpecBuilder(reader, rb)
 
 			g.Expect(b.Build(tt.clusterConfigFile)).Error().NotTo(Succeed())
 		})
@@ -68,7 +68,9 @@ func TestFileSpecBuilderBuildSuccess(t *testing.T) {
 
 	v := version.Info{GitVersion: "v0.0.1"}
 	reader := files.NewReader()
-	b := cluster.NewFileSpecBuilder(reader, v, cluster.WithReleasesManifest("testdata/simple_release.yaml"))
+	rb := cluster.NewReleaseBuilder(reader, v,
+		cluster.WithReleasesManifest("testdata/simple_release.yaml"))
+	b := cluster.NewFileSpecBuilder(reader, rb)
 
 	gotSpec, err := b.Build("testdata/cluster_1_19.yaml")
 
@@ -81,46 +83,14 @@ func TestNewSpecWithBundlesOverrideValid(t *testing.T) {
 
 	v := version.Info{GitVersion: "v0.0.1"}
 	reader := files.NewReader()
-	b := cluster.NewFileSpecBuilder(reader, v,
+	rb := cluster.NewReleaseBuilder(reader, v,
 		cluster.WithReleasesManifest("testdata/simple_release.yaml"),
-		cluster.WithOverrideBundlesManifest("testdata/simple_bundle.yaml"),
-	)
+		cluster.WithOverrideBundlesManifest("testdata/simple_bundle.yaml"))
+
+	b := cluster.NewFileSpecBuilder(reader, rb)
 
 	gotSpec, err := b.Build("testdata/cluster_1_19.yaml")
 
 	g.Expect(err).NotTo(HaveOccurred())
 	validateSpecFromSimpleBundle(t, gotSpec)
-}
-
-func TestGetBundles(t *testing.T) {
-	g := NewWithT(t)
-
-	v := version.Info{GitVersion: "v0.0.1"}
-	reader := files.NewReader()
-	b := cluster.NewFileSpecBuilder(reader, v,
-		cluster.WithReleasesManifest("testdata/simple_release.yaml"),
-	)
-
-	got, err := cluster.GetBundlesManifest(b)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(got).NotTo(BeNil())
-}
-
-func TestBuildEKSARelease(t *testing.T) {
-	g := NewWithT(t)
-
-	v := version.Info{GitVersion: "v0.0.1"}
-	reader := files.NewReader()
-	b := cluster.NewFileSpecBuilder(reader, v,
-		cluster.WithReleasesManifest("testdata/simple_release.yaml"),
-	)
-
-	bundles := test.Bundle()
-	got, err := cluster.BuildEKSARelease(b, test.Bundle())
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(got.Spec.BundlesRef).To(BeEquivalentTo(v1alpha1.BundlesRef{
-		APIVersion: bundles.APIVersion,
-		Name:       bundles.Name,
-		Namespace:  bundles.Namespace,
-	}))
 }

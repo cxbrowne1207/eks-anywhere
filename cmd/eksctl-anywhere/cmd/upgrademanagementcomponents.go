@@ -39,12 +39,7 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 			return err
 		}
 
-		bundles, err := getBundles(umco.clusterOptions)
-		if err != nil {
-			return err
-		}
-
-		eksaRelease, err := getEksaRelease(bundles, umco.clusterOptions)
+		release, err := newRelease(umco.clusterOptions)
 		if err != nil {
 			return err
 		}
@@ -96,7 +91,7 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 		}
 
 		validator := management.NewUMCValidator(managementCluster, deps.Kubectl)
-		return runner.Run(ctx, bundles, eksaRelease, clusterSpec, managementCluster, validator)
+		return runner.Run(ctx, release, clusterSpec, managementCluster, validator)
 	},
 }
 

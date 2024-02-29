@@ -90,20 +90,18 @@ func TestRunnerHappyPath(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	bundles := test.Bundle()
-	eksaRelease := test.EKSARelease()
-
+	release := cluster.NewRelease(test.Bundle(), test.EKSARelease())
 	curSpec := test.NewClusterSpec()
-	currentManagementComponents := cluster.ManagementComponentsFromBundles(bundles)
+	currentManagementComponents := cluster.ManagementComponentsFromBundles(release.Bundles)
 
 	newSpec := test.NewClusterSpec(func(s *cluster.Spec) {
-		s.EKSARelease = eksaRelease
-		s.Bundles = bundles
+		s.EKSARelease = release.EKSARelease
+		s.Bundles = release.Bundles
 	})
 
 	newManagementComponents := cluster.ManagementComponentsFromBundles(newSpec.Bundles)
 
-	client := test.NewFakeKubeClient(curSpec.Cluster, eksaRelease, bundles)
+	client := test.NewFakeKubeClient(curSpec.Cluster, release.EKSARelease, release.Bundles)
 
 	mocks.clusterManager.EXPECT().GetCurrentClusterSpec(ctx, gomock.Any(), managementCluster.Name).Return(curSpec, nil)
 	gomock.InOrder(
@@ -118,17 +116,17 @@ func TestRunnerHappyPath(t *testing.T) {
 		mocks.clusterManager.EXPECT().Upgrade(ctx, managementCluster, currentManagementComponents, newManagementComponents, newSpec).Return(eksaChangeDiff, nil),
 		mocks.eksdUpgrader.EXPECT().Upgrade(ctx, managementCluster, curSpec, newSpec).Return(nil),
 		mocks.clusterManager.EXPECT().ApplyBundles(
-			ctx, bundles, managementCluster,
+			ctx, release.Bundles, managementCluster,
 		).Return(nil),
 		mocks.clusterManager.EXPECT().ApplyReleases(
-			ctx, eksaRelease, managementCluster,
+			ctx, release.EKSARelease, managementCluster,
 		).Return(nil),
 		mocks.eksdInstaller.EXPECT().InstallEksdManifest(
-			ctx, bundles, managementCluster,
+			ctx, release.Bundles, managementCluster,
 		).Return(nil),
 	)
 
-	err := runner.Run(ctx, bundles, eksaRelease, newSpec, managementCluster, mocks.validator)
+	err := runner.Run(ctx, release, newSpec, managementCluster, mocks.validator)
 	if err != nil {
 		t.Fatalf("UpgradeManagementComponents.Run() err = %v, want err = nil", err)
 	}
@@ -157,12 +155,12 @@ func TestRunnerStopsWhenValidationFailed(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	bundles := test.Bundle()
-	eksaRelease := test.EKSARelease()
+	release := cluster.NewRelease(test.Bundle(), test.EKSARelease())
+
 	curSpec := test.NewClusterSpec()
 	newSpec := test.NewClusterSpec(func(s *cluster.Spec) {
-		s.EKSARelease = eksaRelease
-		s.Bundles = bundles
+		s.EKSARelease = release.EKSARelease
+		s.Bundles = release.Bundles
 	})
 
 	mocks.provider.EXPECT().Name()
@@ -178,7 +176,7 @@ func TestRunnerStopsWhenValidationFailed(t *testing.T) {
 		})
 
 	mocks.writer.EXPECT().Write(fmt.Sprintf("%s-checkpoint.yaml", newSpec.Cluster.Name), gomock.Any())
-	err := runner.Run(ctx, bundles, eksaRelease, newSpec, managementCluster, mocks.validator)
+	err := runner.Run(ctx, release, newSpec, managementCluster, mocks.validator)
 	if err == nil {
 		t.Fatalf("UpgradeManagementComponents.Run() err == nil, want err != nil")
 	}

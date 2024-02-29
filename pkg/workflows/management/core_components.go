@@ -59,7 +59,6 @@ func runUpgradeCoreComponents(ctx context.Context, commandContext *task.CommandC
 		commandContext.SetError(err)
 		return err
 	}
-
 	client, err := commandContext.ClientFactory.BuildClientFromKubeconfig(commandContext.ManagementCluster.KubeconfigFile)
 	if err != nil {
 		commandContext.SetError(err)
