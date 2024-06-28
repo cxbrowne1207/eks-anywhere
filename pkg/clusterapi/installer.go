@@ -24,8 +24,8 @@ func NewInstaller(capiClient CAPIClient, kubectlClient KubectlClient) *Installer
 }
 
 // EnsureEtcdProvidersInstallation ensures that the CAPI etcd providers are installed in the management cluster.
-func (i *Installer) EnsureEtcdProvidersInstallation(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, managementComponents *cluster.ManagementComponents, currSpec *cluster.Spec) error {
-	if !currSpec.Cluster.IsSelfManaged() {
+func (i *Installer) EnsureEtcdProvidersInstallation(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, currentManagementSpec *cluster.ManagementSpec) error {
+	if !currentManagementSpec.Cluster.IsSelfManaged() {
 		logger.V(1).Info("Not a management cluster, skipping check for CAPI etcd providers")
 		return nil
 	}
@@ -47,7 +47,7 @@ func (i *Installer) EnsureEtcdProvidersInstallation(ctx context.Context, managem
 	}
 
 	if len(installProviders) > 0 {
-		return i.capiClient.InstallEtcdadmProviders(ctx, managementComponents, currSpec, managementCluster, provider, installProviders)
+		return i.capiClient.InstallEtcdadmProviders(ctx, currentManagementSpec, managementCluster, provider, installProviders)
 	}
 	return nil
 }

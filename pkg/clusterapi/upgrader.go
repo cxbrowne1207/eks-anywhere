@@ -24,22 +24,22 @@ func NewUpgrader(capiClient CAPIClient, kubectlClient KubectlClient) *Upgrader {
 }
 
 // Upgrade checks whether upgrading the CAPI components is necessary and, if so, upgrades them the new versions.
-func (u *Upgrader) Upgrade(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, newSpec *cluster.Spec) (*types.ChangeDiff, error) {
+func (u *Upgrader) Upgrade(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, currentManagementComponents *cluster.ManagementComponents, managementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error) {
 	logger.V(1).Info("Checking for CAPI upgrades")
-	if !newSpec.Cluster.IsSelfManaged() {
+	if !managementSpec.Cluster.IsSelfManaged() {
 		logger.V(1).Info("Skipping CAPI upgrades, not a self-managed cluster")
 		return nil, nil
 	}
 
-	capiChangeDiff := capiChangeDiff(currentManagementComponents, newManagementComponents, provider)
+	capiChangeDiff := capiChangeDiff(currentManagementComponents, managementSpec.ManagementComponents, provider)
 	if capiChangeDiff == nil {
 		logger.V(1).Info("Nothing to upgrade for CAPI")
 		return nil, nil
 	}
 
 	logger.V(1).Info("Starting CAPI upgrades")
-	if err := u.capiClient.Upgrade(ctx, managementCluster, provider, newManagementComponents, newSpec, capiChangeDiff); err != nil {
-		return nil, fmt.Errorf("failed upgrading ClusterAPI from EKS-A version %s to EKS-A version %s: %v", currentManagementComponents.Eksa.Version, newManagementComponents.Eksa.Version, err)
+	if err := u.capiClient.Upgrade(ctx, managementCluster, provider, managementSpec, capiChangeDiff); err != nil {
+		return nil, fmt.Errorf("failed upgrading ClusterAPI from EKS-A version %s to EKS-A version %s: %v", currentManagementComponents.Eksa.Version, managementSpec.ManagementComponents.Eksa.Version, err)
 	}
 
 	return capiChangeDiff.toChangeDiff(), nil

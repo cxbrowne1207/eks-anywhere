@@ -152,7 +152,13 @@ func BuildSpecFromConfig(ctx context.Context, client Client, config *Config) (*S
 		return nil, err
 	}
 
-	return NewSpec(config, bundles, eksdReleases, eksaRelease)
+	managementComponents, err := GetManagementComponents(ctx, client, config.Cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	managementSpec := NewManagementSpec(config, managementComponents, bundles, eksaRelease)
+	return NewSpec(managementSpec, eksdReleases)
 }
 
 func fetchAllEksdReleases(ctx context.Context, client Client, cluster *v1alpha1.Cluster, bundles *v1alpha1release.Bundles) ([]eksdv1alpha1.Release, error) {

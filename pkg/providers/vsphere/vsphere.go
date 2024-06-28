@@ -987,7 +987,7 @@ func (p *vsphereProvider) PostWorkloadInit(ctx context.Context, cluster *types.C
 }
 
 // EnvMap returns a map of environment variables required for the vsphere provider.
-func (p *vsphereProvider) EnvMap(_ *cluster.ManagementComponents, _ *cluster.Spec) (map[string]string, error) {
+func (p *vsphereProvider) EnvMap(_ *cluster.ManagementSpec) (map[string]string, error) {
 	envMap := make(map[string]string)
 	for _, key := range requiredEnvs {
 		if env, ok := os.LookupEnv(key); ok && len(env) > 0 {
@@ -1269,8 +1269,7 @@ func (p *vsphereProvider) PostBootstrapDeleteForUpgrade(ctx context.Context, clu
 func (p *vsphereProvider) PreCoreComponentsUpgrade(
 	ctx context.Context,
 	cluster *types.Cluster,
-	managementComponents *cluster.ManagementComponents,
-	clusterSpec *cluster.Spec,
+	managementSpec *cluster.ManagementSpec,
 ) error {
 	return nil
 }

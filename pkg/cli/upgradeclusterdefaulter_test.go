@@ -18,8 +18,10 @@ func TestRunUpgradeClusterDefaulter(t *testing.T) {
 	c := baseCluster()
 
 	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: c,
+			},
 		},
 	}
 	mhcDefaulter := cluster.NewMachineHealthCheckDefaulter(constants.DefaultNodeStartupTimeout, constants.DefaultUnhealthyMachineTimeout, intstr.Parse(constants.DefaultMaxUnhealthy), intstr.Parse(constants.DefaultWorkerMaxUnhealthy))

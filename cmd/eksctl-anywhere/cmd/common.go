@@ -16,7 +16,7 @@ import (
 // getImages returns all the images in the Bundle for the cluster kubernetes versions.
 // This is deprecated. It builds a file reader in line, prefer using the dependency factory.
 func getImages(clusterSpecPath, bundlesOverride string) ([]v1alpha1.Image, error) {
-	var specOpts []cluster.FileSpecBuilderOpt
+	var specOpts []cluster.ReleaseBuilderOpt
 	if bundlesOverride != "" {
 		specOpts = append(specOpts, cluster.WithOverrideBundlesManifest(bundlesOverride))
 	}

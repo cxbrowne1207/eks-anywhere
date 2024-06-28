@@ -100,7 +100,7 @@ func (m *MockClusterManager) EXPECT() *MockClusterManagerMockRecorder {
 }
 
 // ApplyBundles mocks base method.
-func (m *MockClusterManager) ApplyBundles(arg0 context.Context, arg1 *cluster.Spec, arg2 *types.Cluster) error {
+func (m *MockClusterManager) ApplyBundles(arg0 context.Context, arg1 *cluster.ManagementSpec, arg2 *types.Cluster) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ApplyBundles", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -114,7 +114,7 @@ func (mr *MockClusterManagerMockRecorder) ApplyBundles(arg0, arg1, arg2 interfac
 }
 
 // ApplyReleases mocks base method.
-func (m *MockClusterManager) ApplyReleases(arg0 context.Context, arg1 *cluster.Spec, arg2 *types.Cluster) error {
+func (m *MockClusterManager) ApplyReleases(arg0 context.Context, arg1 *cluster.ManagementSpec, arg2 *types.Cluster) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ApplyReleases", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -213,17 +213,17 @@ func (mr *MockClusterManagerMockRecorder) GetCurrentClusterSpec(arg0, arg1, arg2
 }
 
 // InstallCAPI mocks base method.
-func (m *MockClusterManager) InstallCAPI(arg0 context.Context, arg1 *cluster.ManagementComponents, arg2 *cluster.Spec, arg3 *types.Cluster, arg4 providers.Provider) error {
+func (m *MockClusterManager) InstallCAPI(arg0 context.Context, arg1 *cluster.ManagementSpec, arg2 *types.Cluster, arg3 providers.Provider) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallCAPI", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "InstallCAPI", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InstallCAPI indicates an expected call of InstallCAPI.
-func (mr *MockClusterManagerMockRecorder) InstallCAPI(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockClusterManagerMockRecorder) InstallCAPI(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallCAPI", reflect.TypeOf((*MockClusterManager)(nil).InstallCAPI), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallCAPI", reflect.TypeOf((*MockClusterManager)(nil).InstallCAPI), arg0, arg1, arg2, arg3)
 }
 
 // MoveCAPI mocks base method.
@@ -316,18 +316,18 @@ func (mr *MockClusterManagerMockRecorder) SaveLogsWorkloadCluster(arg0, arg1, ar
 }
 
 // Upgrade mocks base method.
-func (m *MockClusterManager) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.ManagementComponents, arg4 *cluster.Spec) (*types.ChangeDiff, error) {
+func (m *MockClusterManager) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.ManagementSpec) (*types.ChangeDiff, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*types.ChangeDiff)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Upgrade indicates an expected call of Upgrade.
-func (mr *MockClusterManagerMockRecorder) Upgrade(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockClusterManagerMockRecorder) Upgrade(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockClusterManager)(nil).Upgrade), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockClusterManager)(nil).Upgrade), arg0, arg1, arg2, arg3)
 }
 
 // MockGitOpsManager is a mock of GitOpsManager interface.
@@ -382,31 +382,31 @@ func (mr *MockGitOpsManagerMockRecorder) ForceReconcileGitRepo(arg0, arg1, arg2 
 }
 
 // Install mocks base method.
-func (m *MockGitOpsManager) Install(arg0 context.Context, arg1 *types.Cluster, arg2 *cluster.ManagementComponents, arg3, arg4 *cluster.Spec) error {
+func (m *MockGitOpsManager) Install(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.ManagementSpec) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Install", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "Install", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Install indicates an expected call of Install.
-func (mr *MockGitOpsManagerMockRecorder) Install(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockGitOpsManagerMockRecorder) Install(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Install", reflect.TypeOf((*MockGitOpsManager)(nil).Install), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Install", reflect.TypeOf((*MockGitOpsManager)(nil).Install), arg0, arg1, arg2, arg3)
 }
 
 // InstallGitOps mocks base method.
-func (m *MockGitOpsManager) InstallGitOps(arg0 context.Context, arg1 *types.Cluster, arg2 *cluster.ManagementComponents, arg3 *cluster.Spec, arg4 providers.DatacenterConfig, arg5 []providers.MachineConfig) error {
+func (m *MockGitOpsManager) InstallGitOps(arg0 context.Context, arg1 *types.Cluster, arg2 *cluster.Spec, arg3 providers.DatacenterConfig, arg4 []providers.MachineConfig) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallGitOps", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "InstallGitOps", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InstallGitOps indicates an expected call of InstallGitOps.
-func (mr *MockGitOpsManagerMockRecorder) InstallGitOps(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
+func (mr *MockGitOpsManagerMockRecorder) InstallGitOps(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallGitOps", reflect.TypeOf((*MockGitOpsManager)(nil).InstallGitOps), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallGitOps", reflect.TypeOf((*MockGitOpsManager)(nil).InstallGitOps), arg0, arg1, arg2, arg3, arg4)
 }
 
 // PauseClusterResourcesReconcile mocks base method.
@@ -452,18 +452,18 @@ func (mr *MockGitOpsManagerMockRecorder) UpdateGitEksaSpec(arg0, arg1, arg2, arg
 }
 
 // Upgrade mocks base method.
-func (m *MockGitOpsManager) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.ManagementComponents, arg4, arg5 *cluster.Spec) (*types.ChangeDiff, error) {
+func (m *MockGitOpsManager) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.ManagementSpec) (*types.ChangeDiff, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*types.ChangeDiff)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Upgrade indicates an expected call of Upgrade.
-func (mr *MockGitOpsManagerMockRecorder) Upgrade(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
+func (mr *MockGitOpsManagerMockRecorder) Upgrade(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockGitOpsManager)(nil).Upgrade), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockGitOpsManager)(nil).Upgrade), arg0, arg1, arg2, arg3)
 }
 
 // Validations mocks base method.
@@ -541,32 +541,32 @@ func (m *MockCAPIManager) EXPECT() *MockCAPIManagerMockRecorder {
 }
 
 // EnsureEtcdProvidersInstallation mocks base method.
-func (m *MockCAPIManager) EnsureEtcdProvidersInstallation(arg0 context.Context, arg1 *types.Cluster, arg2 providers.Provider, arg3 *cluster.ManagementComponents, arg4 *cluster.Spec) error {
+func (m *MockCAPIManager) EnsureEtcdProvidersInstallation(arg0 context.Context, arg1 *types.Cluster, arg2 providers.Provider, arg3 *cluster.ManagementSpec) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureEtcdProvidersInstallation", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "EnsureEtcdProvidersInstallation", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // EnsureEtcdProvidersInstallation indicates an expected call of EnsureEtcdProvidersInstallation.
-func (mr *MockCAPIManagerMockRecorder) EnsureEtcdProvidersInstallation(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockCAPIManagerMockRecorder) EnsureEtcdProvidersInstallation(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureEtcdProvidersInstallation", reflect.TypeOf((*MockCAPIManager)(nil).EnsureEtcdProvidersInstallation), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureEtcdProvidersInstallation", reflect.TypeOf((*MockCAPIManager)(nil).EnsureEtcdProvidersInstallation), arg0, arg1, arg2, arg3)
 }
 
 // Upgrade mocks base method.
-func (m *MockCAPIManager) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2 providers.Provider, arg3, arg4 *cluster.ManagementComponents, arg5 *cluster.Spec) (*types.ChangeDiff, error) {
+func (m *MockCAPIManager) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2 providers.Provider, arg3 *cluster.ManagementComponents, arg4 *cluster.ManagementSpec) (*types.ChangeDiff, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(*types.ChangeDiff)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Upgrade indicates an expected call of Upgrade.
-func (mr *MockCAPIManagerMockRecorder) Upgrade(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
+func (mr *MockCAPIManagerMockRecorder) Upgrade(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockCAPIManager)(nil).Upgrade), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upgrade", reflect.TypeOf((*MockCAPIManager)(nil).Upgrade), arg0, arg1, arg2, arg3, arg4)
 }
 
 // MockEksdInstaller is a mock of EksdInstaller interface.
@@ -593,7 +593,7 @@ func (m *MockEksdInstaller) EXPECT() *MockEksdInstallerMockRecorder {
 }
 
 // InstallEksdCRDs mocks base method.
-func (m *MockEksdInstaller) InstallEksdCRDs(arg0 context.Context, arg1 *cluster.Spec, arg2 *types.Cluster) error {
+func (m *MockEksdInstaller) InstallEksdCRDs(arg0 context.Context, arg1 *cluster.ManagementSpec, arg2 *types.Cluster) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InstallEksdCRDs", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -607,7 +607,7 @@ func (mr *MockEksdInstallerMockRecorder) InstallEksdCRDs(arg0, arg1, arg2 interf
 }
 
 // InstallEksdManifest mocks base method.
-func (m *MockEksdInstaller) InstallEksdManifest(arg0 context.Context, arg1 *cluster.Spec, arg2 *types.Cluster) error {
+func (m *MockEksdInstaller) InstallEksdManifest(arg0 context.Context, arg1 *cluster.ManagementSpec, arg2 *types.Cluster) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InstallEksdManifest", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -644,7 +644,7 @@ func (m *MockEksdUpgrader) EXPECT() *MockEksdUpgraderMockRecorder {
 }
 
 // Upgrade mocks base method.
-func (m *MockEksdUpgrader) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.Spec) error {
+func (m *MockEksdUpgrader) Upgrade(arg0 context.Context, arg1 *types.Cluster, arg2, arg3 *cluster.ManagementSpec) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Upgrade", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
@@ -843,17 +843,17 @@ func (m *MockEksaInstaller) EXPECT() *MockEksaInstallerMockRecorder {
 }
 
 // Install mocks base method.
-func (m *MockEksaInstaller) Install(arg0 context.Context, arg1 logr.Logger, arg2 *types.Cluster, arg3 *cluster.ManagementComponents, arg4 *cluster.Spec) error {
+func (m *MockEksaInstaller) Install(arg0 context.Context, arg1 logr.Logger, arg2 *types.Cluster, arg3 *cluster.Spec) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Install", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "Install", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Install indicates an expected call of Install.
-func (mr *MockEksaInstallerMockRecorder) Install(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockEksaInstallerMockRecorder) Install(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Install", reflect.TypeOf((*MockEksaInstaller)(nil).Install), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Install", reflect.TypeOf((*MockEksaInstaller)(nil).Install), arg0, arg1, arg2, arg3)
 }
 
 // MockClusterDeleter is a mock of ClusterDeleter interface.

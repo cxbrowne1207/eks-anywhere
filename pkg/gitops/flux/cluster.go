@@ -15,21 +15,90 @@ import (
 	"github.com/aws/eks-anywhere/pkg/validations"
 )
 
-// fluxForCluster bundles the Flux struct with a specific clusterSpec, so that all the git and file write
-// operations for the clusterSpec can be done in each structure method.
-type fluxForCluster struct {
-	*Flux
+type fluxForManagementSpec struct {
+	*fluxForCluster
+	managmentSpec *cluster.ManagementSpec
+}
+
+func (fc *fluxForManagementSpec) commitFilesToGit(ctx context.Context) error {
+	logger.Info("Adding cluster configuration files to Git")
+	err := fc.commitToGit(ctx, func(g *FileGenerator) error {
+		if fc.clusterConfig.Cluster.IsSelfManaged() {
+			if err := g.WriteFluxSystemFiles(fc.managmentSpec); err != nil {
+				return fmt.Errorf("writing flux system files: %v", err)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	logger.V(3).Info("Finished pushing cluster config manifest files to git")
+
+	return nil
+}
+
+func newFluxForManagementSpec(flux *Flux, managementSpec *cluster.ManagementSpec) *fluxForManagementSpec {
+	return &fluxForManagementSpec{
+		fluxForCluster: newFluxForCluster(flux, managementSpec.Config),
+		managmentSpec:  managementSpec,
+	}
+}
+
+type fluxForClusterSpec struct {
+	*fluxForCluster
 	clusterSpec      *cluster.Spec
 	datacenterConfig providers.DatacenterConfig
 	machineConfigs   []providers.MachineConfig
 }
 
-func newFluxForCluster(flux *Flux, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) *fluxForCluster {
-	return &fluxForCluster{
-		Flux:             flux,
+func newFluxForClusterSpec(flux *Flux, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) *fluxForClusterSpec {
+	return &fluxForClusterSpec{
+		fluxForCluster:   newFluxForCluster(flux, clusterSpec.Config),
 		clusterSpec:      clusterSpec,
 		datacenterConfig: datacenterConfig,
 		machineConfigs:   machineConfigs,
+	}
+}
+
+func (fc *fluxForClusterSpec) commitFilesToGit(ctx context.Context) error {
+	logger.Info("Adding cluster configuration files to Git")
+	err := fc.commitToGit(ctx, func(g *FileGenerator) error {
+		if err := g.WriteEksaFiles(fc.clusterSpec, fc.datacenterConfig, fc.machineConfigs); err != nil {
+			return fmt.Errorf("writing eks-a config files: %v", err)
+		}
+
+		if fc.clusterConfig.Cluster.IsSelfManaged() {
+			managementSpec := cluster.ManagementSpecFromClusterSpec(fc.clusterSpec)
+			if err := g.WriteFluxSystemFiles(managementSpec); err != nil {
+				return fmt.Errorf("writing flux system files: %v", err)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	logger.V(3).Info("Finished pushing cluster config manifest files to git")
+
+	return nil
+}
+
+// fluxForCluster bundles the Flux struct with a specific clusterSpec, so that all the git and file write
+// operations for the clusterSpec can be done in each structure method.
+type fluxForCluster struct {
+	*Flux
+	clusterConfig *cluster.Config
+}
+
+func newFluxForCluster(flux *Flux, clusterConfig *cluster.Config) *fluxForCluster {
+	return &fluxForCluster{
+		Flux:          flux,
+		clusterConfig: clusterConfig,
 	}
 }
 
@@ -37,9 +106,56 @@ func newFluxForCluster(flux *Flux, clusterSpec *cluster.Spec, datacenterConfig p
 // If the remote repository does not exist it will initialize a local repository and push it to the configured remote.
 // It will generate the kustomization file and marshal the cluster configuration file to the required locations in the repo.
 // These will later be used by Flux and our controllers to reconcile the repository contents and the cluster configuration.
-func (fc *fluxForCluster) commitFluxAndClusterConfigToGit(ctx context.Context, managementComponents *cluster.ManagementComponents) error {
+// func (fc *fluxForCluster) commitFluxAndClusterConfigToGit(ctx context.Context, clusterSpec *cluster.Spec) error {
+// 	logger.Info("Adding cluster configuration files to Git")
+// 	err := fc.commitToGit(ctx, func(g *FileGenerator) error {
+// 		if err := g.WriteEksaFiles(clusterSpec, fc.datacenterConfig, fc.machineConfigs); err != nil {
+// 			return fmt.Errorf("writing eks-a config files: %v", err)
+// 		}
+
+// 		if fc.clusterConfig.Cluster.IsSelfManaged() {
+// 			managementSpec := cluster.ManagementSpecFromClusterSpec(clusterSpec)
+// 			if err := g.WriteFluxSystemFiles(managementSpec); err != nil {
+// 				return fmt.Errorf("writing flux system files: %v", err)
+// 			}
+// 		}
+// 		return nil
+// 	})
+
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	logger.V(3).Info("Finished pushing cluster config manifest files to git")
+
+// 	return nil
+// }
+
+// func (fc *fluxForCluster) commitFluxToGit(ctx context.Context, managementSpec *cluster.ManagementSpec) error {
+// 	logger.Info("Adding flux configuration files to Git")
+// 	err := fc.commitToGit(ctx, func(g *FileGenerator) error {
+// 		if fc.clusterConfig.Cluster.IsSelfManaged() {
+// 			if err := g.WriteFluxSystemFiles(managementSpec); err != nil {
+// 				return fmt.Errorf("writing flux system files: %v", err)
+// 			}
+// 		}
+// 		return nil
+// 	})
+
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	logger.V(3).Info("Finished pushing flux custom manifest files to git")
+
+// 	return nil
+// }
+
+type gitFileWriteAction func(*FileGenerator) error
+
+func (fc *fluxForCluster) commitToGit(ctx context.Context, opts ...gitFileWriteAction) error {
 	logger.Info("Adding cluster configuration files to Git")
-	config := fc.clusterSpec.FluxConfig
+	config := fc.clusterConfig.FluxConfig
 
 	if err := fc.validateLocalConfigPathDoesNotExist(); err != nil {
 		return err
@@ -50,13 +166,10 @@ func (fc *fluxForCluster) commitFluxAndClusterConfigToGit(ctx context.Context, m
 		return err
 	}
 
-	if err := g.WriteEksaFiles(fc.clusterSpec, fc.datacenterConfig, fc.machineConfigs); err != nil {
-		return fmt.Errorf("writing eks-a config files: %v", err)
-	}
-
-	if fc.clusterSpec.Cluster.IsSelfManaged() {
-		if err := g.WriteFluxSystemFiles(managementComponents, fc.clusterSpec); err != nil {
-			return fmt.Errorf("writing flux system files: %v", err)
+	for _, opt := range opts {
+		err := opt(g)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -89,7 +202,7 @@ func (fc *fluxForCluster) syncGitRepo(ctx context.Context) error {
 
 func (fc *fluxForCluster) initializeProviderRepositoryIfNotExists(ctx context.Context) (*git.Repository, error) {
 	// If git provider, the repository should be pre-initialized by the user.
-	if fc.clusterSpec.FluxConfig.Spec.Git != nil {
+	if fc.clusterConfig.FluxConfig.Spec.Git != nil {
 		return &git.Repository{}, nil
 	}
 
@@ -190,7 +303,7 @@ func (fc *fluxForCluster) initializeLocalRepository() error {
 // validateLocalConfigPathDoesNotExist returns an exception if the cluster configuration file exists.
 // This is done so that we avoid clobbering existing cluster configurations in the user-provided git repository.
 func (fc *fluxForCluster) validateLocalConfigPathDoesNotExist() error {
-	if fc.clusterSpec.Cluster.IsSelfManaged() {
+	if fc.clusterConfig.Cluster.IsSelfManaged() {
 		p := path.Join(fc.writer.Dir(), fc.path())
 		if validations.FileExists(p) {
 			return fmt.Errorf("a cluster configuration file already exists at path %s", p)
@@ -200,7 +313,7 @@ func (fc *fluxForCluster) validateLocalConfigPathDoesNotExist() error {
 }
 
 func (fc *fluxForCluster) validateRemoteConfigPathDoesNotExist(ctx context.Context) error {
-	if !fc.clusterSpec.Cluster.IsSelfManaged() || fc.gitClient == nil {
+	if !fc.clusterConfig.Cluster.IsSelfManaged() || fc.gitClient == nil {
 		return nil
 	}
 
@@ -217,44 +330,44 @@ func (fc *fluxForCluster) validateRemoteConfigPathDoesNotExist(ctx context.Conte
 }
 
 func (fc *fluxForCluster) namespace() string {
-	return fc.clusterSpec.FluxConfig.Spec.SystemNamespace
+	return fc.clusterConfig.FluxConfig.Spec.SystemNamespace
 }
 
 func (fc *fluxForCluster) repository() string {
-	if fc.clusterSpec.FluxConfig.Spec.Github != nil {
-		return fc.clusterSpec.FluxConfig.Spec.Github.Repository
+	if fc.clusterConfig.FluxConfig.Spec.Github != nil {
+		return fc.clusterConfig.FluxConfig.Spec.Github.Repository
 	}
-	if fc.clusterSpec.FluxConfig.Spec.Git != nil {
-		r := fc.clusterSpec.FluxConfig.Spec.Git.RepositoryUrl
+	if fc.clusterConfig.FluxConfig.Spec.Git != nil {
+		r := fc.clusterConfig.FluxConfig.Spec.Git.RepositoryUrl
 		return path.Base(strings.TrimSuffix(r, filepath.Ext(r)))
 	}
 	return ""
 }
 
 func (fc *fluxForCluster) owner() string {
-	if fc.clusterSpec.FluxConfig.Spec.Github != nil {
-		return fc.clusterSpec.FluxConfig.Spec.Github.Owner
+	if fc.clusterConfig.FluxConfig.Spec.Github != nil {
+		return fc.clusterConfig.FluxConfig.Spec.Github.Owner
 	}
 	return ""
 }
 
 func (fc *fluxForCluster) branch() string {
-	return fc.clusterSpec.FluxConfig.Spec.Branch
+	return fc.clusterConfig.FluxConfig.Spec.Branch
 }
 
 func (fc *fluxForCluster) personal() bool {
-	if fc.clusterSpec.FluxConfig.Spec.Github != nil {
-		return fc.clusterSpec.FluxConfig.Spec.Github.Personal
+	if fc.clusterConfig.FluxConfig.Spec.Github != nil {
+		return fc.clusterConfig.FluxConfig.Spec.Github.Personal
 	}
 	return false
 }
 
 func (fc *fluxForCluster) path() string {
-	return fc.clusterSpec.FluxConfig.Spec.ClusterConfigPath
+	return fc.clusterConfig.FluxConfig.Spec.ClusterConfigPath
 }
 
 func (fc *fluxForCluster) eksaSystemDir() string {
-	return path.Join(fc.path(), fc.clusterSpec.Cluster.GetName(), eksaSystemDirName)
+	return path.Join(fc.path(), fc.clusterConfig.Cluster.GetName(), eksaSystemDirName)
 }
 
 func (fc *fluxForCluster) fluxSystemDir() string {

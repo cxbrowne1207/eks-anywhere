@@ -38,6 +38,12 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		managementSpec, err := newManagementSpec(umco.clusterOptions)
+		if err != nil {
+			return err
+		}
+
 		if !clusterSpec.Cluster.IsSelfManaged() {
 			return fmt.Errorf("cluster %s doesn't contain management components to be upgraded", clusterSpec.Cluster.Name)
 		}
@@ -85,7 +91,7 @@ var upgradeManagementComponentsCmd = &cobra.Command{
 		}
 
 		validator := management.NewUMCValidator(managementCluster, clusterSpec.EKSARelease, deps.UnAuthKubectlClient)
-		return runner.Run(ctx, clusterSpec, managementCluster, validator)
+		return runner.Run(ctx, managementSpec, clusterSpec, managementCluster, validator)
 	},
 }
 

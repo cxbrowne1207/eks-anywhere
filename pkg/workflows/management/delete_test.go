@@ -177,7 +177,7 @@ func (c *deleteTestSetup) expectInstallEksaComponentsBootstrap(err1, err2, err3,
 			c.ctx, c.bootstrapCluster.KubeconfigFile).Return(err3).AnyTimes(),
 
 		c.eksdInstaller.EXPECT().InstallEksdManifest(
-			c.ctx, c.clusterSpec, c.bootstrapCluster).Return(err4).AnyTimes(),
+			c.ctx, c.clusterSpec.Bundles, c.bootstrapCluster).Return(err4).AnyTimes(),
 
 		c.clientFactory.EXPECT().BuildClientFromKubeconfig(c.bootstrapCluster.KubeconfigFile).Return(c.client, err5).AnyTimes(),
 	)

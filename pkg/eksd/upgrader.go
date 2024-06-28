@@ -26,10 +26,10 @@ func NewUpgrader(client EksdInstallerClient, reader Reader, opts ...UpgraderOpt)
 }
 
 // Upgrade checks for EKS-D updates, and if there are updates the EKS-D CRDs in the cluster.
-func (u *Upgrader) Upgrade(ctx context.Context, cluster *types.Cluster, currentSpec, newSpec *cluster.Spec) error {
+func (u *Upgrader) Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementSpec, newManagementSpec *cluster.ManagementSpec) error {
 	logger.V(1).Info("Updating EKS-D CRDs")
-	if err := u.InstallEksdCRDs(ctx, newSpec, cluster); err != nil {
-		return fmt.Errorf("updating EKS-D crds from bundles %d to bundles %d: %v", currentSpec.Bundles.Spec.Number, newSpec.Bundles.Spec.Number, err)
+	if err := u.InstallEksdCRDs(ctx, newManagementSpec, cluster); err != nil {
+		return fmt.Errorf("updating EKS-D crds from bundles %d to bundles %d: %v", currentManagementSpec.Bundles.Spec.Number, newManagementSpec.Bundles.Spec.Number, err)
 	}
 	return nil
 }

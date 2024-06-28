@@ -192,12 +192,12 @@ func (p *SnowProvider) Version(components *cluster.ManagementComponents) string 
 }
 
 // EnvMap returns the environment variables for the snow provider.
-func (p *SnowProvider) EnvMap(managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec) (map[string]string, error) {
+func (p *SnowProvider) EnvMap(managementSpec *cluster.ManagementSpec) (map[string]string, error) {
 	envMap := make(map[string]string)
-	envMap[snowCredentialsKey] = string(clusterSpec.SnowCredentialsSecret.Data[v1alpha1.SnowCredentialsKey])
-	envMap[snowCertsKey] = string(clusterSpec.SnowCredentialsSecret.Data[v1alpha1.SnowCertificatesKey])
+	envMap[snowCredentialsKey] = string(managementSpec.SnowCredentialsSecret.Data[v1alpha1.SnowCredentialsKey])
+	envMap[snowCertsKey] = string(managementSpec.SnowCredentialsSecret.Data[v1alpha1.SnowCertificatesKey])
 
-	envMap["SNOW_CONTROLLER_IMAGE"] = managementComponents.Snow.Manager.VersionedImage()
+	envMap["SNOW_CONTROLLER_IMAGE"] = managementSpec.ManagementComponents.Snow.Manager.VersionedImage()
 
 	return envMap, nil
 }
@@ -370,8 +370,7 @@ func (p *SnowProvider) InstallCustomProviderComponents(ctx context.Context, kube
 func (p *SnowProvider) PreCoreComponentsUpgrade(
 	ctx context.Context,
 	cluster *types.Cluster,
-	managementComponents *cluster.ManagementComponents,
-	clusterSpec *cluster.Spec,
+	managementSpec *cluster.ManagementSpec,
 ) error {
 	return nil
 }

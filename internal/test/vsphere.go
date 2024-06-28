@@ -80,11 +80,10 @@ func VSphereClusterSpec(tb testing.TB, namespace string, opts ...ClusterSpecOpt)
 		VSphereDatacenter: workloadClusterDatacenter,
 	}
 
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundle), bundle, EKSARelease())
 	spec, err := cluster.NewSpec(
-		config,
-		bundle,
+		managementSpec,
 		EksdReleases(),
-		EKSARelease(),
 	)
 	if err != nil {
 		tb.Fatalf("Failed to build cluster spec: %s", err)

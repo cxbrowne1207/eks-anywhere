@@ -82,23 +82,40 @@ func NewFluxFromGitOpsFluxClient(fluxClient GitOpsFluxClient, gitClient GitClien
 }
 
 // InstallGitOps installs the GitOps components for the cluster.
-func (f *Flux) InstallGitOps(ctx context.Context, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) error {
+func (f *Flux) InstallGitOps(ctx context.Context, typesCluster *types.Cluster, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) error {
+	managementSpec := cluster.ManagementSpecFromClusterSpec(clusterSpec)
+	fc := newFluxForClusterSpec(f, clusterSpec, datacenterConfig, machineConfigs)
+	return f.installGitOps(ctx, fc, typesCluster, managementSpec)
+}
+
+// InstallGitOps installs the GitOps components for the cluster.
+func (f *Flux) installGitOpsCore(ctx context.Context, typesCluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
+	fc := newFluxForManagementSpec(f, managementSpec)
+	return f.installGitOps(ctx, fc, typesCluster, managementSpec)
+}
+
+type FluxCluster interface {
+	setupRepository(ctx context.Context) error
+	commitFilesToGit(ctx context.Context) error
+	branch() string
+}
+
+// installGitOps installs the GitOps components for the cluster.
+func (f *Flux) installGitOps(ctx context.Context, fc FluxCluster, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
 	if f.shouldSkipFlux() {
 		logger.Info("GitOps field not specified, bootstrap flux skipped")
 		return nil
 	}
 
-	fc := newFluxForCluster(f, clusterSpec, datacenterConfig, machineConfigs)
-
 	if err := fc.setupRepository(ctx); err != nil {
 		return err
 	}
 
-	if err := fc.commitFluxAndClusterConfigToGit(ctx, managementComponents); err != nil {
+	if err := fc.commitFilesToGit(ctx); err != nil {
 		return err
 	}
 
-	if err := f.Bootstrap(ctx, cluster, clusterSpec); err != nil {
+	if err := f.bootstrap(ctx, cluster, managementSpec); err != nil {
 		return err
 	}
 
@@ -112,38 +129,51 @@ func (f *Flux) InstallGitOps(ctx context.Context, cluster *types.Cluster, manage
 	return nil
 }
 
-func (f *Flux) Bootstrap(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
-	if err := f.BootstrapGithub(ctx, cluster, clusterSpec); err != nil {
-		_ = f.Uninstall(ctx, cluster, clusterSpec)
+func (f *Flux) Bootstrap(ctx context.Context, typesCluster *types.Cluster, clusterSpec *cluster.Spec) error {
+	return f.bootstrap(ctx, typesCluster, cluster.ManagementSpecFromClusterSpec(clusterSpec))
+}
+
+func (f *Flux) bootstrap(ctx context.Context, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
+	if err := f.bootstrapGitHub(ctx, cluster, managementSpec); err != nil {
+		_ = f.Uninstall(ctx, cluster, managementSpec)
 		return fmt.Errorf("installing GitHub gitops: %v", err)
 	}
 
-	if err := f.BootstrapGit(ctx, cluster, clusterSpec); err != nil {
-		_ = f.Uninstall(ctx, cluster, clusterSpec)
+	if err := f.bootstrapGit(ctx, cluster, managementSpec); err != nil {
+		_ = f.Uninstall(ctx, cluster, managementSpec)
 		return fmt.Errorf("installing generic git gitops: %v", err)
 	}
 
 	return nil
 }
 
-func (f *Flux) BootstrapGithub(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
-	if clusterSpec.Cluster.IsManaged() || clusterSpec.FluxConfig.Spec.Github == nil {
+func (f *Flux) BootstrapGithub(ctx context.Context, typesCluster *types.Cluster, clusterSpec *cluster.Spec) error {
+	return f.bootstrapGitHub(ctx, typesCluster, cluster.ManagementSpecFromClusterSpec(clusterSpec))
+
+}
+
+func (f *Flux) bootstrapGitHub(ctx context.Context, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
+	if managementSpec.Cluster.IsManaged() || managementSpec.FluxConfig.Spec.Github == nil {
 		return nil
 	}
 
-	return f.fluxClient.BootstrapGithub(ctx, cluster, clusterSpec.FluxConfig)
+	return f.fluxClient.BootstrapGithub(ctx, cluster, managementSpec.FluxConfig)
 }
 
-func (f *Flux) BootstrapGit(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
-	if clusterSpec.Cluster.IsManaged() || clusterSpec.FluxConfig.Spec.Git == nil {
+func (f *Flux) BootstrapGit(ctx context.Context, typesCluster *types.Cluster, clusterSpec *cluster.Spec) error {
+	return f.bootstrapGit(ctx, typesCluster, cluster.ManagementSpecFromClusterSpec(clusterSpec))
+}
+
+func (f *Flux) bootstrapGit(ctx context.Context, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
+	if managementSpec.Cluster.IsManaged() || managementSpec.FluxConfig.Spec.Git == nil {
 		return nil
 	}
 
-	return f.fluxClient.BootstrapGit(ctx, cluster, clusterSpec.FluxConfig, f.cliConfig)
+	return f.fluxClient.BootstrapGit(ctx, cluster, managementSpec.FluxConfig, f.cliConfig)
 }
 
-func (f *Flux) Uninstall(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
-	if err := f.fluxClient.Uninstall(ctx, cluster, clusterSpec.FluxConfig); err != nil {
+func (f *Flux) Uninstall(ctx context.Context, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
+	if err := f.fluxClient.Uninstall(ctx, cluster, managementSpec.FluxConfig); err != nil {
 		logger.Info("Could not uninstall flux components", "error", err)
 		return err
 	}
@@ -219,7 +249,7 @@ func (f *Flux) UpdateGitEksaSpec(ctx context.Context, clusterSpec *cluster.Spec,
 		return nil
 	}
 
-	fc := newFluxForCluster(f, clusterSpec, datacenterConfig, machineConfigs)
+	fc := newFluxForCluster(f, clusterSpec.Config)
 
 	if err := fc.syncGitRepo(ctx); err != nil {
 		return err
@@ -251,7 +281,7 @@ func (f *Flux) Validations(ctx context.Context, clusterSpec *cluster.Spec) []val
 		return nil
 	}
 
-	fc := newFluxForCluster(f, clusterSpec, nil, nil)
+	fc := newFluxForCluster(f, clusterSpec.Config)
 
 	return []validations.Validation{
 		func() *validations.ValidationResult {
@@ -270,7 +300,7 @@ func (f *Flux) CleanupGitRepo(ctx context.Context, clusterSpec *cluster.Spec) er
 		return nil
 	}
 
-	fc := newFluxForCluster(f, clusterSpec, nil, nil)
+	fc := newFluxForCluster(f, clusterSpec.Config)
 
 	if err := fc.syncGitRepo(ctx); err != nil {
 		return err

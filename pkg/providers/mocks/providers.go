@@ -111,18 +111,18 @@ func (mr *MockProviderMockRecorder) DeleteResources(arg0, arg1 interface{}) *gom
 }
 
 // EnvMap mocks base method.
-func (m *MockProvider) EnvMap(arg0 *cluster.ManagementComponents, arg1 *cluster.Spec) (map[string]string, error) {
+func (m *MockProvider) EnvMap(arg0 *cluster.ManagementSpec) (map[string]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnvMap", arg0, arg1)
+	ret := m.ctrl.Call(m, "EnvMap", arg0)
 	ret0, _ := ret[0].(map[string]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // EnvMap indicates an expected call of EnvMap.
-func (mr *MockProviderMockRecorder) EnvMap(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockProviderMockRecorder) EnvMap(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnvMap", reflect.TypeOf((*MockProvider)(nil).EnvMap), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnvMap", reflect.TypeOf((*MockProvider)(nil).EnvMap), arg0)
 }
 
 // GenerateCAPISpecForCreate mocks base method.
@@ -340,17 +340,17 @@ func (mr *MockProviderMockRecorder) PreCAPIInstallOnBootstrap(arg0, arg1, arg2 i
 }
 
 // PreCoreComponentsUpgrade mocks base method.
-func (m *MockProvider) PreCoreComponentsUpgrade(arg0 context.Context, arg1 *types.Cluster, arg2 *cluster.ManagementComponents, arg3 *cluster.Spec) error {
+func (m *MockProvider) PreCoreComponentsUpgrade(arg0 context.Context, arg1 *types.Cluster, arg2 *cluster.ManagementSpec) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PreCoreComponentsUpgrade", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "PreCoreComponentsUpgrade", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // PreCoreComponentsUpgrade indicates an expected call of PreCoreComponentsUpgrade.
-func (mr *MockProviderMockRecorder) PreCoreComponentsUpgrade(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockProviderMockRecorder) PreCoreComponentsUpgrade(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreCoreComponentsUpgrade", reflect.TypeOf((*MockProvider)(nil).PreCoreComponentsUpgrade), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PreCoreComponentsUpgrade", reflect.TypeOf((*MockProvider)(nil).PreCoreComponentsUpgrade), arg0, arg1, arg2)
 }
 
 // RunPostControlPlaneUpgrade mocks base method.

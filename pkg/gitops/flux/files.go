@@ -90,8 +90,8 @@ func (g *FileGenerator) WriteEksaFiles(clusterSpec *cluster.Spec, datacenterConf
 }
 
 // WriteFluxSystemFiles writes the flux-system files into the flux system git directory.
-func (g *FileGenerator) WriteFluxSystemFiles(managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec) error {
-	if err := g.WriteFluxKustomization(managementComponents, clusterSpec); err != nil {
+func (g *FileGenerator) WriteFluxSystemFiles(managementSpec *cluster.ManagementSpec) error {
+	if err := g.WriteFluxKustomization(managementSpec); err != nil {
 		return err
 	}
 
@@ -126,13 +126,13 @@ func (g *FileGenerator) WriteEksaKustomization() error {
 }
 
 // WriteFluxKustomization writes the flux-system kustomization file into the flux system git directory.
-func (g *FileGenerator) WriteFluxKustomization(managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec) error {
+func (g *FileGenerator) WriteFluxKustomization(managementSpec *cluster.ManagementSpec) error {
 	values := map[string]string{
-		"Namespace":                   clusterSpec.FluxConfig.Spec.SystemNamespace,
-		"SourceControllerImage":       managementComponents.Flux.SourceController.VersionedImage(),
-		"KustomizeControllerImage":    managementComponents.Flux.KustomizeController.VersionedImage(),
-		"HelmControllerImage":         managementComponents.Flux.HelmController.VersionedImage(),
-		"NotificationControllerImage": managementComponents.Flux.NotificationController.VersionedImage(),
+		"Namespace":                   managementSpec.FluxConfig.Spec.SystemNamespace,
+		"SourceControllerImage":       managementSpec.ManagementComponents.Flux.SourceController.VersionedImage(),
+		"KustomizeControllerImage":    managementSpec.ManagementComponents.Flux.KustomizeController.VersionedImage(),
+		"HelmControllerImage":         managementSpec.ManagementComponents.Flux.HelmController.VersionedImage(),
+		"NotificationControllerImage": managementSpec.ManagementComponents.Flux.NotificationController.VersionedImage(),
 	}
 
 	if path, err := g.fluxTemplater.WriteToFile(fluxKustomizeContent, values, kustomizeFileName, filewriter.PersistentFile); err != nil {

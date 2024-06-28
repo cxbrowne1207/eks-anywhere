@@ -311,14 +311,16 @@ func TestValidateImmutableFields(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
 			current := &cluster.Spec{
-				Config: &cluster.Config{
-					Cluster: &v1alpha1.Cluster{
-						Spec: v1alpha1.ClusterSpec{
-							WorkerNodeGroupConfigurations: []v1alpha1.WorkerNodeGroupConfiguration{{}},
+				ManagementSpec: &cluster.ManagementSpec{
+					Config: &cluster.Config{
+						Cluster: &v1alpha1.Cluster{
+							Spec: v1alpha1.ClusterSpec{
+								WorkerNodeGroupConfigurations: []v1alpha1.WorkerNodeGroupConfiguration{{}},
+							},
 						},
 					},
+					Bundles: &releasev1alpha1.Bundles{},
 				},
-				Bundles: &releasev1alpha1.Bundles{},
 			}
 			desired := current.DeepCopy()
 

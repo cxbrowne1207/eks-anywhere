@@ -10,7 +10,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/aws/eks-anywhere/pkg/api/v1alpha1"
@@ -21,8 +20,6 @@ import (
 	"github.com/aws/eks-anywhere/pkg/dependencies"
 	"github.com/aws/eks-anywhere/pkg/files"
 	"github.com/aws/eks-anywhere/pkg/kubeconfig"
-	"github.com/aws/eks-anywhere/pkg/manifests"
-	"github.com/aws/eks-anywhere/pkg/manifests/bundles"
 	"github.com/aws/eks-anywhere/pkg/providers/cloudstack/decoder"
 	"github.com/aws/eks-anywhere/pkg/types"
 	"github.com/aws/eks-anywhere/pkg/validations"
@@ -89,16 +86,17 @@ func (c clusterOptions) mountDirs() []string {
 	return dirs
 }
 
-func readClusterSpec(clusterConfigPath string, cliVersion version.Info, opts ...cluster.FileSpecBuilderOpt) (*cluster.Spec, error) {
+func readClusterSpec(clusterConfigPath string, cliVersion version.Info, opts ...cluster.ReleaseBuilderOpt) (*cluster.Spec, error) {
+	reader := files.NewReader(files.WithEKSAUserAgent("cli", cliVersion.GitVersion))
+	rb := cluster.NewReleaseBuilder(reader, cliVersion, opts...)
 	b := cluster.NewFileSpecBuilder(
-		files.NewReader(files.WithEKSAUserAgent("cli", cliVersion.GitVersion)),
-		cliVersion,
-		opts...,
+		reader,
+		rb,
 	)
 	return b.Build(clusterConfigPath)
 }
 
-func readAndValidateClusterSpec(clusterConfigPath string, cliVersion version.Info, opts ...cluster.FileSpecBuilderOpt) (*cluster.Spec, error) {
+func readAndValidateClusterSpec(clusterConfigPath string, cliVersion version.Info, opts ...cluster.ReleaseBuilderOpt) (*cluster.Spec, error) {
 	clusterSpec, err := readClusterSpec(clusterConfigPath, cliVersion, opts...)
 	if err != nil {
 		return nil, err
@@ -111,7 +109,7 @@ func readAndValidateClusterSpec(clusterConfigPath string, cliVersion version.Inf
 }
 
 func newClusterSpec(options clusterOptions) (*cluster.Spec, error) {
-	var opts []cluster.FileSpecBuilderOpt
+	var opts []cluster.ReleaseBuilderOpt
 	if options.bundlesOverride != "" {
 		opts = append(opts, cluster.WithOverrideBundlesManifest(options.bundlesOverride))
 	}
@@ -137,27 +135,6 @@ func newClusterSpec(options clusterOptions) (*cluster.Spec, error) {
 	}
 
 	return clusterSpec, nil
-}
-
-func getBundles(cliVersion version.Info, bundlesManifestURL string) (*releasev1.Bundles, error) {
-	reader := files.NewReader(files.WithEKSAUserAgent("cli", cliVersion.GitVersion))
-	manifestReader := manifests.NewReader(reader)
-	if bundlesManifestURL == "" {
-		return manifestReader.ReadBundlesForVersion(cliVersion.GitVersion)
-	}
-
-	return bundles.Read(reader, bundlesManifestURL)
-}
-
-func getEksaRelease(cliVersion version.Info) (*releasev1.EksARelease, error) {
-	reader := files.NewReader(files.WithEKSAUserAgent("cli", cliVersion.GitVersion))
-	manifestReader := manifests.NewReader(reader)
-	release, err := manifestReader.ReadReleaseForVersion(cliVersion.GitVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	return release, nil
 }
 
 func getConfig(clusterConfigPath string, cliVersion version.Info) (*cluster.Config, error) {
@@ -193,11 +170,40 @@ func newBasicSpec(config *cluster.Config, bundles *releasev1.Bundles, eksaReleas
 	return s
 }
 
-func readBasicClusterSpec(clusterConfigPath string, cliVersion version.Info, options clusterOptions) (*cluster.Spec, error) {
-	bundle, err := getBundles(cliVersion, options.bundlesOverride)
+func newRelease(options clusterOptions) (*cluster.Release, error) {
+	cliVersion := version.Get()
+	reader := files.NewReader(files.WithEKSAUserAgent("cli", cliVersion.GitVersion))
+
+	var opts []cluster.ReleaseBuilderOpt
+	if options.bundlesOverride != "" {
+		opts = append(opts, cluster.WithOverrideBundlesManifest(options.bundlesOverride))
+	}
+
+	rb := cluster.NewReleaseBuilder(reader, cliVersion, opts...)
+	return rb.Build()
+}
+
+func newManagementSpec(options clusterOptions) (*cluster.ManagementSpec, error) {
+	config, err := getConfig(options.fileName, version.Get())
 	if err != nil {
 		return nil, err
 	}
+
+	release, err := newRelease(options)
+	if err != nil {
+		return nil, err
+	}
+
+	return cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(release.Bundles), release.Bundles, release.EKSARelease), nil
+}
+
+func readBasicClusterSpec(clusterConfigPath string, cliVersion version.Info, options clusterOptions) (*cluster.Spec, error) {
+	release, err := newRelease(options)
+	if err != nil {
+		return nil, err
+	}
+
+	bundle := release.Bundles
 	bundle.Namespace = constants.EksaSystemNamespace
 
 	config, err := getConfig(clusterConfigPath, cliVersion)
@@ -215,34 +221,9 @@ func readBasicClusterSpec(clusterConfigPath string, cliVersion version.Info, opt
 		return nil, err
 	}
 
-	release, err := getEksaRelease(cliVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	releaseVersion := v1alpha1.EksaVersion(release.Version)
+	releaseVersion := v1alpha1.EksaVersion(release.EKSARelease.Spec.Version)
 	config.Cluster.Spec.EksaVersion = &releaseVersion
-	eksaRelease := &releasev1.EKSARelease{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       releasev1.EKSAReleaseKind,
-			APIVersion: releasev1.SchemeBuilder.GroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      releasev1.GenerateEKSAReleaseName(release.Version),
-			Namespace: constants.EksaSystemNamespace,
-		},
-		Spec: releasev1.EKSAReleaseSpec{
-			ReleaseDate:       release.Date,
-			Version:           release.Version,
-			GitCommit:         release.GitCommit,
-			BundleManifestURL: release.BundleManifestUrl,
-			BundlesRef: releasev1.BundlesRef{
-				APIVersion: releasev1.GroupVersion.String(),
-				Name:       bundle.Name,
-				Namespace:  bundle.Namespace,
-			},
-		},
-	}
+	eksaRelease := release.EKSARelease
 
 	return newBasicSpec(config, bundle, eksaRelease), nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/aws/eks-anywhere/pkg/api/v1alpha1"
-	"github.com/aws/eks-anywhere/pkg/cluster"
 	"github.com/aws/eks-anywhere/pkg/clustermarshaller"
 	"github.com/aws/eks-anywhere/pkg/logger"
 	"github.com/aws/eks-anywhere/pkg/task"
@@ -97,14 +96,13 @@ func (s *installEksaComponentsOnWorkloadTask) Checkpoint() *task.CompletedTask {
 
 func installEKSAComponents(ctx context.Context, commandContext *task.CommandContext, targetCluster *types.Cluster) error {
 	logger.Info("Installing EKS-D components")
-	if err := commandContext.EksdInstaller.InstallEksdCRDs(ctx, commandContext.ClusterSpec, targetCluster); err != nil {
+	if err := commandContext.EksdInstaller.InstallEksdCRDs(ctx, commandContext.ManagementSpec, targetCluster); err != nil {
 		commandContext.SetError(err)
 		return err
 	}
 
 	logger.Info("Installing EKS-A custom components (CRD and controller)")
-	managementComponents := cluster.ManagementComponentsFromBundles(commandContext.ClusterSpec.Bundles)
-	if err := commandContext.EksaInstaller.Install(ctx, logger.Get(), targetCluster, managementComponents, commandContext.ClusterSpec); err != nil {
+	if err := commandContext.EksaInstaller.Install(ctx, logger.Get(), targetCluster, commandContext.ClusterSpec); err != nil {
 		commandContext.SetError(err)
 		return err
 	}
@@ -114,7 +112,7 @@ func installEKSAComponents(ctx context.Context, commandContext *task.CommandCont
 		return err
 	}
 
-	if err := commandContext.EksdInstaller.InstallEksdManifest(ctx, commandContext.ClusterSpec, targetCluster); err != nil {
+	if err := commandContext.EksdInstaller.InstallEksdManifest(ctx, commandContext.ManagementSpec, targetCluster); err != nil {
 		commandContext.SetError(err)
 		return err
 	}

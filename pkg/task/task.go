@@ -42,6 +42,7 @@ type CommandContext struct {
 	ClusterCreator        interfaces.ClusterCreator
 	ClusterDeleter        interfaces.ClusterDeleter
 	CAPIManager           interfaces.CAPIManager
+	ManagementSpec        *cluster.ManagementSpec
 	ClusterSpec           *cluster.Spec
 	CurrentClusterSpec    *cluster.Spec
 	UpgradeChangeDiff     *types.ChangeDiff

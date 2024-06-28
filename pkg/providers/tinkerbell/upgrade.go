@@ -439,21 +439,20 @@ func (p *Provider) validateMachineCfg(ctx context.Context, cluster *types.Cluste
 func (p *Provider) PreCoreComponentsUpgrade(
 	ctx context.Context,
 	cluster *types.Cluster,
-	managementComponents *cluster.ManagementComponents,
-	clusterSpec *cluster.Spec,
+	managementSpec *cluster.ManagementSpec,
 ) error {
 	// When a workload cluster the cluster object could be nil. Noop if it is.
 	if cluster == nil {
 		return nil
 	}
 
-	if clusterSpec == nil {
-		return errors.New("cluster spec is nil")
+	if managementSpec == nil {
+		return errors.New("management spec is nil")
 	}
 
 	// PreCoreComponentsUpgrade can be called for workload clusters. Ensure we only attempt to
 	// upgrade the stack if we're upgrading a management cluster.
-	if clusterSpec.Cluster.IsManaged() {
+	if managementSpec.Cluster.IsManaged() {
 		return nil
 	}
 
@@ -461,12 +460,12 @@ func (p *Provider) PreCoreComponentsUpgrade(
 	// images, installing new CRDs and possibly removing old ones.
 	err := p.stackInstaller.Upgrade(
 		ctx,
-		managementComponents.Tinkerbell,
+		managementSpec.ManagementComponents.Tinkerbell,
 		p.datacenterConfig.Spec.TinkerbellIP,
 		cluster.KubeconfigFile,
 		p.datacenterConfig.Spec.HookImagesURLPath,
 		stack.WithLoadBalancerEnabled(
-			len(clusterSpec.Cluster.Spec.WorkerNodeGroupConfigurations) != 0 && // load balancer is handled by kube-vip in control plane nodes
+			len(managementSpec.Cluster.Spec.WorkerNodeGroupConfigurations) != 0 && // load balancer is handled by kube-vip in control plane nodes
 				!p.datacenterConfig.Spec.SkipLoadBalancerDeployment), // configure load balancer based on datacenterConfig.Spec.SkipLoadBalancerDeployment
 	)
 	if err != nil {

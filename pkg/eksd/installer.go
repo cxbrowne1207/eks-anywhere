@@ -57,10 +57,10 @@ func WithRetrier(retrier *retrier.Retrier) InstallerOpt {
 	}
 }
 
-func (i *Installer) InstallEksdCRDs(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error {
+func (i *Installer) InstallEksdCRDs(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error {
 	var eksdCRDs []byte
 	eksdCrds := map[string]struct{}{}
-	for _, vb := range clusterSpec.Bundles.Spec.VersionsBundles {
+	for _, vb := range managementSpec.Bundles.Spec.VersionsBundles {
 		eksdCrds[vb.EksD.Components] = struct{}{}
 	}
 	for crd := range eksdCrds {
@@ -92,9 +92,10 @@ func (i *Installer) SetRetrier(retrier *retrier.Retrier) {
 	i.retrier = retrier
 }
 
-func (i *Installer) InstallEksdManifest(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error {
+// InstallEksdManifest installs the eksd manifest to the cluster.
+func (i *Installer) InstallEksdManifest(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error {
 	var eksdReleaseManifest []byte
-	for _, vb := range clusterSpec.Bundles.Spec.VersionsBundles {
+	for _, vb := range managementSpec.Bundles.Spec.VersionsBundles {
 		if err := i.retrier.Retry(
 			func() error {
 				var readerErr error

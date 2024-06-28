@@ -12,24 +12,21 @@ import (
 )
 
 type Spec struct {
-	*Config
-	Bundles           *v1alpha1.Bundles
+	*ManagementSpec
 	OIDCConfig        *eksav1alpha1.OIDCConfig
 	AWSIamConfig      *eksav1alpha1.AWSIamConfig
 	ManagementCluster *types.Cluster // TODO(g-gaston): cleanup, this doesn't belong here
-	EKSARelease       *v1alpha1.EKSARelease
 	VersionsBundles   map[eksav1alpha1.KubernetesVersion]*VersionsBundle
 }
 
 func (s *Spec) DeepCopy() *Spec {
 	ns := &Spec{
-		Config:          s.Config.DeepCopy(),
 		OIDCConfig:      s.OIDCConfig.DeepCopy(),
 		AWSIamConfig:    s.AWSIamConfig.DeepCopy(),
-		Bundles:         s.Bundles.DeepCopy(),
 		VersionsBundles: deepCopyVersionsBundles(s.VersionsBundles),
-		EKSARelease:     s.EKSARelease.DeepCopy(),
 	}
+
+	ns.ManagementSpec = NewManagementSpec(s.Config.DeepCopy(), deepCopyManagementComponents(s.ManagementComponents), s.Bundles.DeepCopy(), s.EKSARelease.DeepCopy())
 
 	if s.ManagementCluster != nil {
 		ns.ManagementCluster = s.ManagementCluster.DeepCopy()
@@ -52,6 +49,30 @@ func deepCopyVersionsBundles(v map[eksav1alpha1.KubernetesVersion]*VersionsBundl
 		}
 	}
 	return m
+}
+
+func deepCopyManagementComponents(m *ManagementComponents) *ManagementComponents {
+	if m == nil {
+		return nil
+	}
+
+	return &ManagementComponents{
+		EksD:                   *m.EksD.DeepCopy(),
+		CertManager:            *m.CertManager.DeepCopy(),
+		ClusterAPI:             *m.ClusterAPI.DeepCopy(),
+		Bootstrap:              *m.Bootstrap.DeepCopy(),
+		ControlPlane:           *m.ControlPlane.DeepCopy(),
+		VSphere:                *m.VSphere.DeepCopy(),
+		CloudStack:             *m.CloudStack.DeepCopy(),
+		Docker:                 *m.Docker.DeepCopy(),
+		Eksa:                   *m.Eksa.DeepCopy(),
+		Flux:                   *m.Flux.DeepCopy(),
+		ExternalEtcdBootstrap:  *m.ExternalEtcdBootstrap.DeepCopy(),
+		ExternalEtcdController: *m.ExternalEtcdController.DeepCopy(),
+		Tinkerbell:             *m.Tinkerbell.DeepCopy(),
+		Snow:                   *m.Snow.DeepCopy(),
+		Nutanix:                *m.Nutanix.DeepCopy(),
+	}
 }
 
 // EKSD represents an eks-d release.
@@ -90,18 +111,16 @@ type VersionedRepository struct {
 }
 
 // NewSpec builds a new [Spec].
-func NewSpec(config *Config, bundles *v1alpha1.Bundles, eksdReleases []eksdv1alpha1.Release, eksaRelease *v1alpha1.EKSARelease) (*Spec, error) {
-	s := &Spec{}
+func NewSpec(managementSpec *ManagementSpec, eksdReleases []eksdv1alpha1.Release) (*Spec, error) {
+	s := &Spec{
+		ManagementSpec: managementSpec,
+	}
 
-	s.Bundles = bundles
-	s.Config = config
-
-	vb, err := getAllVersionsBundles(s.Cluster, bundles, eksdReleases)
+	vb, err := getAllVersionsBundles(s.Cluster, managementSpec.Bundles, eksdReleases)
 	if err != nil {
 		return nil, err
 	}
 	s.VersionsBundles = vb
-	s.EKSARelease = eksaRelease
 
 	// Get first aws iam config if it exists
 	// Config supports multiple configs because Cluster references a slice

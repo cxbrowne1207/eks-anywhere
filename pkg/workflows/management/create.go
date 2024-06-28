@@ -56,6 +56,7 @@ func (c *Create) Run(ctx context.Context, clusterSpec *cluster.Spec, validator i
 		ClusterManager:   c.clusterManager,
 		GitOpsManager:    c.gitOpsManager,
 		ClusterSpec:      clusterSpec,
+		ManagementSpec:   cluster.ManagementSpecFromClusterSpec(clusterSpec),
 		Writer:           c.writer,
 		Validations:      validator,
 		EksdInstaller:    c.eksdInstaller,

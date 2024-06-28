@@ -96,7 +96,7 @@ type ClientFactory interface {
 type CAPIClient interface {
 	BackupManagement(ctx context.Context, cluster *types.Cluster, managementStatePath, clusterName string) error
 	MoveManagement(ctx context.Context, from, target *types.Cluster, clusterName string) error
-	InitInfrastructure(ctx context.Context, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, cluster *types.Cluster, provider providers.Provider) error
+	InitInfrastructure(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster, provider providers.Provider) error
 	GetWorkloadKubeconfig(ctx context.Context, clusterName string, cluster *types.Cluster) ([]byte, error)
 }
 
@@ -110,8 +110,8 @@ type AwsIamAuth interface {
 
 // EKSAComponents allows to manage the eks-a components installation in a cluster.
 type EKSAComponents interface {
-	Install(ctx context.Context, log logr.Logger, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, spec *cluster.Spec) error
-	Upgrade(ctx context.Context, log logr.Logger, cluster *types.Cluster, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, newSpec *cluster.Spec) (*types.ChangeDiff, error)
+	Install(ctx context.Context, log logr.Logger, cluster *types.Cluster, spec *cluster.Spec) error
+	Upgrade(ctx context.Context, log logr.Logger, cluster *types.Cluster, currentManagementSpec, newManagementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error)
 }
 
 type ClusterManagerOpt func(*ClusterManager)
@@ -353,13 +353,13 @@ func (c *ClusterManager) CreateRegistryCredSecret(ctx context.Context, mgmt *typ
 }
 
 // InstallCAPI installs the cluster-api components in a cluster.
-func (c *ClusterManager) InstallCAPI(ctx context.Context, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, cluster *types.Cluster, provider providers.Provider) error {
-	err := c.clusterClient.InitInfrastructure(ctx, managementComponents, clusterSpec, cluster, provider)
+func (c *ClusterManager) InstallCAPI(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster, provider providers.Provider) error {
+	err := c.clusterClient.InitInfrastructure(ctx, managementSpec, cluster, provider)
 	if err != nil {
 		return fmt.Errorf("initializing capi resources in cluster: %v", err)
 	}
 
-	return c.waitForCAPI(ctx, cluster, provider, clusterSpec.Cluster.Spec.ExternalEtcdConfiguration != nil)
+	return c.waitForCAPI(ctx, cluster, provider, managementSpec.Cluster.Spec.ExternalEtcdConfiguration != nil)
 }
 
 func (c *ClusterManager) waitForCAPI(ctx context.Context, cluster *types.Cluster, provider providers.Provider, externalEtcdTopology bool) error {
@@ -610,16 +610,17 @@ func (c *ClusterManager) countNodesReady(ctx context.Context, managementCluster 
 }
 
 // Upgrade updates the eksa components in a cluster according to a Spec.
-func (c *ClusterManager) Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, newSpec *cluster.Spec) (*types.ChangeDiff, error) {
-	return c.eksaComponents.Upgrade(ctx, logger.Get(), cluster, currentManagementComponents, newManagementComponents, newSpec)
+func (c *ClusterManager) Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementSpec, newManagementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error) {
+	return c.eksaComponents.Upgrade(ctx, logger.Get(), cluster, currentManagementSpec, newManagementSpec)
 }
 
 func (c *ClusterManager) CreateEKSANamespace(ctx context.Context, cluster *types.Cluster) error {
 	return c.clusterClient.CreateNamespaceIfNotPresent(ctx, cluster.KubeconfigFile, constants.EksaSystemNamespace)
 }
 
-func (c *ClusterManager) ApplyBundles(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error {
-	bundleObj, err := yaml.Marshal(clusterSpec.Bundles)
+// ApplyBundles applies the Bundles manifest to the cluster.
+func (c *ClusterManager) ApplyBundles(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error {
+	bundleObj, err := yaml.Marshal(managementSpec.Bundles)
 	if err != nil {
 		return fmt.Errorf("outputting bundle yaml: %v", err)
 	}
@@ -631,7 +632,7 @@ func (c *ClusterManager) ApplyBundles(ctx context.Context, clusterSpec *cluster.
 
 	// We need to update this config map with the new upgrader images whenever we
 	// apply a new Bundles object to the cluster in order to support in-place upgrades.
-	cm, err := c.getUpgraderImagesFromBundle(ctx, cluster, clusterSpec)
+	cm, err := c.getUpgraderImagesFromBundle(ctx, cluster, managementSpec)
 	if err != nil {
 		return fmt.Errorf("getting upgrader images from bundle: %v", err)
 	}
@@ -642,8 +643,8 @@ func (c *ClusterManager) ApplyBundles(ctx context.Context, clusterSpec *cluster.
 }
 
 // ApplyReleases applies the EKSARelease manifest.
-func (c *ClusterManager) ApplyReleases(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error {
-	releaseObj, err := yaml.Marshal(clusterSpec.EKSARelease)
+func (c *ClusterManager) ApplyReleases(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error {
+	releaseObj, err := yaml.Marshal(managementSpec.EKSARelease)
 	if err != nil {
 		return fmt.Errorf("outputting release yaml: %v", err)
 	}
@@ -775,9 +776,9 @@ func (c *ClusterManager) buildSpecForCluster(ctx context.Context, clus *types.Cl
 	return cluster.BuildSpec(ctx, client, eksaCluster)
 }
 
-func (c *ClusterManager) getUpgraderImagesFromBundle(ctx context.Context, cluster *types.Cluster, cl *cluster.Spec) (*corev1.ConfigMap, error) {
+func (c *ClusterManager) getUpgraderImagesFromBundle(ctx context.Context, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) (*corev1.ConfigMap, error) {
 	upgraderImages := make(map[string]string)
-	for _, versionBundle := range cl.Bundles.Spec.VersionsBundles {
+	for _, versionBundle := range managementSpec.Bundles.Spec.VersionsBundles {
 		eksD := versionBundle.EksD
 		eksdVersion := fmt.Sprintf("%s-eks-%s-%s", eksD.KubeVersion, eksD.ReleaseChannel, strings.Split(eksD.Name, "-")[4])
 		if _, ok := upgraderImages[eksdVersion]; !ok {

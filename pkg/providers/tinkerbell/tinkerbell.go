@@ -222,7 +222,7 @@ func (p *Provider) Version(components *cluster.ManagementComponents) string {
 }
 
 // EnvMap returns a map of environment variables for the tinkerbell provider.
-func (p *Provider) EnvMap(_ *cluster.ManagementComponents, _ *cluster.Spec) (map[string]string, error) {
+func (p *Provider) EnvMap(_ *cluster.ManagementSpec) (map[string]string, error) {
 	return map[string]string{
 		// The TINKERBELL_IP is input for the CAPT deployment and used as part of default template
 		// generation. However, we use custom templates and leverage the template override

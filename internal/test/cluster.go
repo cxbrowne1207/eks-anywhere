@@ -33,17 +33,33 @@ func DevEksaVersion() v1alpha1.EksaVersion {
 func NewClusterSpec(opts ...ClusterSpecOpt) *cluster.Spec {
 	s := &cluster.Spec{}
 	version := DevEksaVersion()
-	s.Config = &cluster.Config{
-		Cluster: &v1alpha1.Cluster{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "fluxTestCluster",
-			},
-			Spec: v1alpha1.ClusterSpec{
-				KubernetesVersion:             "1.19",
-				WorkerNodeGroupConfigurations: []v1alpha1.WorkerNodeGroupConfiguration{{}},
-				EksaVersion:                   &version,
+	s.ManagementSpec = &cluster.ManagementSpec{
+		Config: &cluster.Config{
+			Cluster: &v1alpha1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "fluxTestCluster",
+				},
+				Spec: v1alpha1.ClusterSpec{
+					KubernetesVersion:             "1.19",
+					WorkerNodeGroupConfigurations: []v1alpha1.WorkerNodeGroupConfiguration{{}},
+					EksaVersion:                   &version,
+				},
 			},
 		},
+		Bundles: &releasev1alpha1.Bundles{
+			Spec: releasev1alpha1.BundlesSpec{
+				VersionsBundles: []releasev1alpha1.VersionsBundle{
+					{
+						EksD: releasev1alpha1.EksDRelease{
+							Name:           "kubernetes-1-19-eks-7",
+							EksDReleaseUrl: "embed:///testdata/release.yaml",
+							KubeVersion:    "1.19",
+						},
+					},
+				},
+			},
+		},
+		EKSARelease: EKSARelease(),
 	}
 	s.VersionsBundles = map[v1alpha1.KubernetesVersion]*cluster.VersionsBundle{
 		v1alpha1.Kube119: {
@@ -57,20 +73,6 @@ func NewClusterSpec(opts ...ClusterSpecOpt) *cluster.Spec {
 			KubeDistro: &cluster.KubeDistro{},
 		},
 	}
-	s.Bundles = &releasev1alpha1.Bundles{
-		Spec: releasev1alpha1.BundlesSpec{
-			VersionsBundles: []releasev1alpha1.VersionsBundle{
-				{
-					EksD: releasev1alpha1.EksDRelease{
-						Name:           "kubernetes-1-19-eks-7",
-						EksDReleaseUrl: "embed:///testdata/release.yaml",
-						KubeVersion:    "1.19",
-					},
-				},
-			},
-		},
-	}
-	s.EKSARelease = EKSARelease()
 
 	for _, opt := range opts {
 		opt(s)
@@ -80,11 +82,13 @@ func NewClusterSpec(opts ...ClusterSpecOpt) *cluster.Spec {
 }
 
 func NewFullClusterSpec(t *testing.T, clusterConfigFile string) *cluster.Spec {
-	b := cluster.NewFileSpecBuilder(
-		files.NewReader(files.WithEmbedFS(configFS)),
+	reader := files.NewReader(files.WithEmbedFS(configFS))
+	rb := cluster.NewReleaseBuilder(
+		reader,
 		version.Info{GitVersion: "v0.19.0-dev+latest"},
 		cluster.WithReleasesManifest("embed:///testdata/releases.yaml"),
 	)
+	b := cluster.NewFileSpecBuilder(reader, rb)
 	s, err := b.Build(clusterConfigFile)
 	if err != nil {
 		t.Fatalf("can't build cluster spec for tests: %v", err)
@@ -102,11 +106,11 @@ func NewClusterSpecForCluster(tb testing.TB, c *v1alpha1.Cluster) *cluster.Spec 
 // NewClusterSpecForConfig builds a compliant [cluster.Spec] from a [cluster.Config] using a test
 // Bundles and EKS-D Release.
 func NewClusterSpecForConfig(tb testing.TB, config *cluster.Config) *cluster.Spec {
+	bundles := Bundles(tb)
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, EKSARelease())
 	spec, err := cluster.NewSpec(
-		config,
-		Bundles(tb),
+		managementSpec,
 		EksdReleases(),
-		EKSARelease(),
 	)
 	if err != nil {
 		tb.Fatalf("Failed to build cluster spec: %s", err)

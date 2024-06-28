@@ -28,7 +28,7 @@ type Provider interface {
 	BootstrapClusterOpts(clusterSpec *cluster.Spec) ([]bootstrapper.BootstrapClusterOption, error)
 	UpdateKubeConfig(content *[]byte, clusterName string) error
 	Version(components *cluster.ManagementComponents) string
-	EnvMap(managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec) (map[string]string, error)
+	EnvMap(managementSpec *cluster.ManagementSpec) (map[string]string, error)
 	GetDeployments() map[string][]string
 	GetInfrastructureBundle(components *cluster.ManagementComponents) *types.InfrastructureBundle
 	DatacenterConfig(clusterSpec *cluster.Spec) DatacenterConfig
@@ -44,7 +44,7 @@ type Provider interface {
 	PostClusterDeleteValidate(ctx context.Context, managementCluster *types.Cluster) error
 	// PostMoveManagementToBootstrap is called after the CAPI management is moved back to the bootstrap cluster.
 	PostMoveManagementToBootstrap(ctx context.Context, bootstrapCluster *types.Cluster) error
-	PreCoreComponentsUpgrade(ctx context.Context, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec) error
+	PreCoreComponentsUpgrade(ctx context.Context, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error
 }
 
 type DatacenterConfig interface {

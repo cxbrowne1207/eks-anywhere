@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	"github.com/aws/eks-anywhere/internal/test"
 	anywherev1 "github.com/aws/eks-anywhere/pkg/api/v1alpha1"
 	"github.com/aws/eks-anywhere/pkg/cluster"
 	"github.com/aws/eks-anywhere/pkg/constants"
@@ -114,11 +115,9 @@ func TestNewMachineHealthCheckDefaulter(t *testing.T) {
 		MaxUnhealthy: &maxUnhealthy,
 	}
 
-	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
-		},
-	}
+	clusterSpec := test.NewClusterSpec(func(s *cluster.Spec) {
+		s.Cluster = c
+	})
 
 	clusterSpec, err := newMachineHealthCheckDefaulter.MachineHealthCheckDefault(context.Background(), clusterSpec)
 
@@ -146,10 +145,13 @@ func TestNewMachineHealthCheckDefaulterTinkerbell(t *testing.T) {
 	}
 
 	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: c,
+			},
 		},
 	}
+
 	clusterSpec, err := mhcDefaulter.MachineHealthCheckDefault(context.Background(), clusterSpec)
 
 	g.Expect(err).To(BeNil())
@@ -174,8 +176,10 @@ func TestNewMachineHealthCheckDefaulterNoChange(t *testing.T) {
 		MaxUnhealthy:            &maxUnhealthy,
 	}
 	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: c,
+			},
 		},
 	}
 
@@ -201,8 +205,10 @@ func TestNewControlPlaneIPCheckAnnotationDefaulterNoAnnotation(t *testing.T) {
 	c := baseCluster()
 
 	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: c,
+			},
 		},
 	}
 
@@ -220,8 +226,10 @@ func TestNewControlPlaneIPCheckAnnotationDefaulterAddAnnotation(t *testing.T) {
 	c := baseCluster()
 
 	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: c,
+			},
 		},
 	}
 
@@ -262,8 +270,10 @@ func TestNewClusterNamespaceDefaulter(t *testing.T) {
 		c.Namespace = tt.namespace
 
 		clusterSpec := &cluster.Spec{
-			Config: &cluster.Config{
-				Cluster: c,
+			ManagementSpec: &cluster.ManagementSpec{
+				Config: &cluster.Config{
+					Cluster: c,
+				},
 			},
 		}
 

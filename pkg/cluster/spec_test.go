@@ -70,7 +70,8 @@ func TestNewSpecError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
-			g.Expect(cluster.NewSpec(tt.config, tt.bundles, tt.eksdRelease, test.EKSARelease())).Error().To(
+			managementSpec := cluster.NewManagementSpec(tt.config, nil, tt.bundles, test.EKSARelease())
+			g.Expect(cluster.NewSpec(managementSpec, tt.eksdRelease)).Error().To(
 				MatchError(ContainSubstring(tt.error)),
 			)
 		})
@@ -114,7 +115,8 @@ func TestNewSpecValid(t *testing.T) {
 		*test.EksdRelease("1-19"),
 	}
 
-	spec, err := cluster.NewSpec(config, bundles, eksd, test.EKSARelease())
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, test.EKSARelease())
+	spec, err := cluster.NewSpec(managementSpec, eksd)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(spec.AWSIamConfig).NotTo(BeNil())
 	g.Expect(spec.OIDCConfig).NotTo(BeNil())
@@ -132,7 +134,8 @@ func TestSpecDeepCopy(t *testing.T) {
 	eksd := []eksdv1.Release{
 		*test.EksdRelease("1-19"),
 	}
-	spec, err := cluster.NewSpec(config, bundles, eksd, test.EKSARelease())
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, test.EKSARelease())
+	spec, err := cluster.NewSpec(managementSpec, eksd)
 	g.Expect(err).To(Succeed())
 
 	g.Expect(spec.DeepCopy()).To(Equal(spec))
@@ -188,7 +191,8 @@ func TestGetVersionsBundleWorkerError(t *testing.T) {
 	eksd := test.EksdReleases()
 	er := test.EKSARelease()
 
-	_, err := cluster.NewSpec(config, bundles, eksd, er)
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, er)
+	_, err := cluster.NewSpec(managementSpec, eksd)
 	g.Expect(err).ToNot(BeNil())
 }
 
@@ -222,7 +226,8 @@ func TestGetVersionsBundleNotFound(t *testing.T) {
 	}
 	er := test.EKSARelease()
 
-	spec, err := cluster.NewSpec(config, bundles, eksd, er)
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, er)
+	spec, err := cluster.NewSpec(managementSpec, eksd)
 	g.Expect(err).To(Succeed())
 	vb := spec.VersionsBundle("1.22")
 	g.Expect(vb).To(BeNil())
@@ -260,7 +265,8 @@ func TestGetVersionsBundlesErrorEksdEmpty(t *testing.T) {
 		},
 	}
 
-	_, err := cluster.NewSpec(config, bundles, []eksdv1.Release{}, test.EKSARelease())
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, test.EKSARelease())
+	_, err := cluster.NewSpec(managementSpec, []eksdv1.Release{})
 	g.Expect(err).ToNot(BeNil())
 }
 
@@ -296,7 +302,8 @@ func TestWorkerNodeGroupVersionsBundle(t *testing.T) {
 		},
 	}
 
-	spec, err := cluster.NewSpec(config, bundles, []eksdv1.Release{*test.EksdRelease("1-23")}, test.EKSARelease())
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, test.EKSARelease())
+	spec, err := cluster.NewSpec(managementSpec, []eksdv1.Release{*test.EksdRelease("1-23")})
 	g.Expect(err).To(BeNil())
 	versionsBundle := spec.WorkerNodeGroupVersionsBundle(spec.Cluster.Spec.WorkerNodeGroupConfigurations[0])
 	g.Expect(versionsBundle).ToNot(BeNil())
@@ -357,7 +364,8 @@ func TestGetVersionsBundlesErrorInvalidEksd(t *testing.T) {
 		},
 	}
 
-	_, err := cluster.NewSpec(config, bundles, eksd, test.EKSARelease())
+	managementSpec := cluster.NewManagementSpec(config, cluster.ManagementComponentsFromBundles(bundles), bundles, test.EKSARelease())
+	_, err := cluster.NewSpec(managementSpec, eksd)
 	g.Expect(err).ToNot(BeNil())
 }
 

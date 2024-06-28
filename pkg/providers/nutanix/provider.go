@@ -591,7 +591,7 @@ func (p *Provider) Version(components *cluster.ManagementComponents) string {
 }
 
 // EnvMap returns the environment variables for the provider.
-func (p *Provider) EnvMap(_ *cluster.ManagementComponents, _ *cluster.Spec) (map[string]string, error) {
+func (p *Provider) EnvMap(_ *cluster.ManagementSpec) (map[string]string, error) {
 	// TODO(nutanix): determine if any env vars are needed and add them to requiredEnvs
 	envMap := make(map[string]string)
 	for _, key := range requiredEnvs {
@@ -770,8 +770,7 @@ func (p *Provider) PostMoveManagementToBootstrap(ctx context.Context, bootstrapC
 func (p *Provider) PreCoreComponentsUpgrade(
 	ctx context.Context,
 	cluster *types.Cluster,
-	managementComponents *cluster.ManagementComponents,
-	clusterSpec *cluster.Spec,
+	managementSpec *cluster.ManagementSpec,
 ) error {
 	return nil
 }

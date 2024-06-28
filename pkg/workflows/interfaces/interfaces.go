@@ -31,29 +31,29 @@ type ClusterManager interface {
 	MoveCAPI(ctx context.Context, from, to *types.Cluster, clusterName string, clusterSpec *cluster.Spec, checkers ...types.NodeReadyChecker) error
 	PauseCAPIWorkloadClusters(ctx context.Context, managementCluster *types.Cluster) error
 	ResumeCAPIWorkloadClusters(ctx context.Context, managementCluster *types.Cluster) error
-	InstallCAPI(ctx context.Context, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, cluster *types.Cluster, provider providers.Provider) error
+	InstallCAPI(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster, provider providers.Provider) error
 	SaveLogsManagementCluster(ctx context.Context, spec *cluster.Spec, cluster *types.Cluster) error
 	SaveLogsWorkloadCluster(ctx context.Context, provider providers.Provider, spec *cluster.Spec, cluster *types.Cluster) error
 	CreateEKSANamespace(ctx context.Context, cluster *types.Cluster) error
-	ApplyBundles(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error
-	ApplyReleases(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error
+	ApplyBundles(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error
+	ApplyReleases(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error
 	PauseEKSAControllerReconcile(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec, provider providers.Provider) error
 	GetCurrentClusterSpec(ctx context.Context, cluster *types.Cluster, clusterName string) (*cluster.Spec, error)
-	Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, newSpec *cluster.Spec) (*types.ChangeDiff, error)
+	Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementSpec, newManagementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error)
 	CreateRegistryCredSecret(ctx context.Context, mgmt *types.Cluster) error
 	GenerateAWSIAMKubeconfig(ctx context.Context, cluster *types.Cluster) error
 }
 
 type GitOpsManager interface {
-	InstallGitOps(ctx context.Context, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) error
+	InstallGitOps(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) error
 	PauseClusterResourcesReconcile(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec, provider providers.Provider) error
 	ResumeClusterResourcesReconcile(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec, provider providers.Provider) error
 	UpdateGitEksaSpec(ctx context.Context, clusterSpec *cluster.Spec, datacenterConfig providers.DatacenterConfig, machineConfigs []providers.MachineConfig) error
 	ForceReconcileGitRepo(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) error
 	Validations(ctx context.Context, clusterSpec *cluster.Spec) []validations.Validation
 	CleanupGitRepo(ctx context.Context, clusterSpec *cluster.Spec) error
-	Install(ctx context.Context, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, oldSpec, newSpec *cluster.Spec) error
-	Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, oldSpec, newSpec *cluster.Spec) (*types.ChangeDiff, error)
+	Install(ctx context.Context, cluster *types.Cluster, oldManagementSpec, newManagementSpec *cluster.ManagementSpec) error
+	Upgrade(ctx context.Context, cluster *types.Cluster, oldManagementSpec, newManagementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error)
 }
 
 type Validator interface {
@@ -61,17 +61,17 @@ type Validator interface {
 }
 
 type CAPIManager interface {
-	Upgrade(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, newSpec *cluster.Spec) (*types.ChangeDiff, error)
-	EnsureEtcdProvidersInstallation(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, managementComponents *cluster.ManagementComponents, currSpec *cluster.Spec) error
+	Upgrade(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, currentManagementComponents *cluster.ManagementComponents, managementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error)
+	EnsureEtcdProvidersInstallation(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, currentManagementSpec *cluster.ManagementSpec) error
 }
 
 type EksdInstaller interface {
-	InstallEksdCRDs(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error
-	InstallEksdManifest(ctx context.Context, clusterSpec *cluster.Spec, cluster *types.Cluster) error
+	InstallEksdCRDs(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error
+	InstallEksdManifest(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster) error
 }
 
 type EksdUpgrader interface {
-	Upgrade(ctx context.Context, cluster *types.Cluster, currentSpec, newSpec *cluster.Spec) error
+	Upgrade(ctx context.Context, cluster *types.Cluster, currentManagementSpec, newManagementSpec *cluster.ManagementSpec) error
 }
 
 type PackageInstaller interface {
@@ -91,7 +91,7 @@ type ClusterCreator interface {
 
 // EksaInstaller installs the EKS-A controllers and CRDs.
 type EksaInstaller interface {
-	Install(ctx context.Context, log logr.Logger, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, spec *cluster.Spec) error
+	Install(ctx context.Context, log logr.Logger, cluster *types.Cluster, clusterSpec *cluster.Spec) error
 }
 
 // ClusterDeleter deletes the cluster.

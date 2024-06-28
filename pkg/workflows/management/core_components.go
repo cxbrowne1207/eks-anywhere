@@ -18,8 +18,7 @@ type ensureEtcdCAPIComponentsExist struct{}
 // Run ensureEtcdCAPIComponentsExist ensures ETCD CAPI providers on the management cluster.
 func (s *ensureEtcdCAPIComponentsExist) Run(ctx context.Context, commandContext *task.CommandContext) task.Task {
 	logger.Info("Ensuring etcd CAPI providers exist on management cluster before upgrade")
-	managementComponents := cluster.ManagementComponentsFromBundles(commandContext.CurrentClusterSpec.Bundles)
-	if err := commandContext.CAPIManager.EnsureEtcdProvidersInstallation(ctx, commandContext.ManagementCluster, commandContext.Provider, managementComponents, commandContext.CurrentClusterSpec); err != nil {
+	if err := commandContext.CAPIManager.EnsureEtcdProvidersInstallation(ctx, commandContext.ManagementCluster, commandContext.Provider, commandContext.CurrentClusterSpec.ManagementSpec); err != nil {
 		commandContext.SetError(err)
 		return &workflows.CollectMgmtClusterDiagnosticsTask{}
 	}
@@ -47,19 +46,15 @@ type upgradeCoreComponents struct {
 func runUpgradeCoreComponents(ctx context.Context, commandContext *task.CommandContext) error {
 	logger.Info("Upgrading core components")
 
-	newManagementComponents := cluster.ManagementComponentsFromBundles(commandContext.ClusterSpec.Bundles)
-
 	err := commandContext.Provider.PreCoreComponentsUpgrade(
 		ctx,
 		commandContext.ManagementCluster,
-		newManagementComponents,
-		commandContext.ClusterSpec,
+		commandContext.ManagementSpec,
 	)
 	if err != nil {
 		commandContext.SetError(err)
 		return err
 	}
-
 	client, err := commandContext.ClientFactory.BuildClientFromKubeconfig(commandContext.ManagementCluster.KubeconfigFile)
 	if err != nil {
 		commandContext.SetError(err)
@@ -72,33 +67,33 @@ func runUpgradeCoreComponents(ctx context.Context, commandContext *task.CommandC
 		return err
 	}
 
-	changeDiff, err := commandContext.CAPIManager.Upgrade(ctx, commandContext.ManagementCluster, commandContext.Provider, currentManagementComponents, newManagementComponents, commandContext.ClusterSpec)
+	changeDiff, err := commandContext.CAPIManager.Upgrade(ctx, commandContext.ManagementCluster, commandContext.Provider, currentManagementComponents, commandContext.ManagementSpec)
 	if err != nil {
 		commandContext.SetError(err)
 		return err
 	}
 	commandContext.UpgradeChangeDiff.Append(changeDiff)
 
-	if err = commandContext.GitOpsManager.Install(ctx, commandContext.ManagementCluster, newManagementComponents, commandContext.CurrentClusterSpec, commandContext.ClusterSpec); err != nil {
+	if err = commandContext.GitOpsManager.Install(ctx, commandContext.ManagementCluster, cluster.ManagementSpecFromClusterSpec(commandContext.CurrentClusterSpec), commandContext.ManagementSpec); err != nil {
 		commandContext.SetError(err)
 		return err
 	}
 
-	changeDiff, err = commandContext.GitOpsManager.Upgrade(ctx, commandContext.ManagementCluster, currentManagementComponents, newManagementComponents, commandContext.CurrentClusterSpec, commandContext.ClusterSpec)
+	changeDiff, err = commandContext.GitOpsManager.Upgrade(ctx, commandContext.ManagementCluster, cluster.ManagementSpecFromClusterSpec(commandContext.CurrentClusterSpec), commandContext.ManagementSpec)
 	if err != nil {
 		commandContext.SetError(err)
 		return err
 	}
 	commandContext.UpgradeChangeDiff.Append(changeDiff)
 
-	changeDiff, err = commandContext.ClusterManager.Upgrade(ctx, commandContext.ManagementCluster, currentManagementComponents, newManagementComponents, commandContext.ClusterSpec)
+	changeDiff, err = commandContext.ClusterManager.Upgrade(ctx, commandContext.ManagementCluster, cluster.ManagementSpecFromClusterSpec(commandContext.CurrentClusterSpec), commandContext.ManagementSpec)
 	if err != nil {
 		commandContext.SetError(err)
 		return err
 	}
 	commandContext.UpgradeChangeDiff.Append(changeDiff)
 
-	err = commandContext.EksdUpgrader.Upgrade(ctx, commandContext.ManagementCluster, commandContext.CurrentClusterSpec, commandContext.ClusterSpec)
+	err = commandContext.EksdUpgrader.Upgrade(ctx, commandContext.ManagementCluster, cluster.ManagementSpecFromClusterSpec(commandContext.CurrentClusterSpec), commandContext.ManagementSpec)
 	if err != nil {
 		commandContext.SetError(err)
 		return err
@@ -111,8 +106,10 @@ func runUpgradeCoreComponents(ctx context.Context, commandContext *task.CommandC
 		commandContext.SetError(err)
 		return err
 	}
-	eksaCluster.SetManagementComponentsVersion(commandContext.ClusterSpec.EKSARelease.Spec.Version)
+
+	eksaCluster.SetManagementComponentsVersion(commandContext.ManagementSpec.EKSARelease.Spec.Version)
 	eksaCluster.ResourceVersion = ""
+
 	if err := client.ApplyServerSide(ctx,
 		constants.EKSACLIFieldManager,
 		eksaCluster,
@@ -121,8 +118,6 @@ func runUpgradeCoreComponents(ctx context.Context, commandContext *task.CommandC
 		commandContext.SetError(err)
 		return err
 	}
-
-	commandContext.ClusterSpec.Cluster.SetManagementComponentsVersion(commandContext.ClusterSpec.EKSARelease.Spec.Version)
 
 	return nil
 }

@@ -825,7 +825,7 @@ func (p *cloudstackProvider) Version(componnets *cluster.ManagementComponents) s
 }
 
 // EnvMap returns a map of environment variables required for the cloudstack provider.
-func (p *cloudstackProvider) EnvMap(_ *cluster.ManagementComponents, _ *cluster.Spec) (map[string]string, error) {
+func (p *cloudstackProvider) EnvMap(_ *cluster.ManagementSpec) (map[string]string, error) {
 	envMap := make(map[string]string)
 	for _, key := range requiredEnvs {
 		if env, ok := os.LookupEnv(key); ok && len(env) > 0 {
@@ -990,8 +990,7 @@ func machineDeploymentName(clusterName, nodeGroupName string) string {
 func (p *cloudstackProvider) PreCoreComponentsUpgrade(
 	ctx context.Context,
 	cluster *types.Cluster,
-	managementComponents *cluster.ManagementComponents,
-	clusterSpec *cluster.Spec,
+	managementSpec *cluster.ManagementSpec,
 ) error {
 	return nil
 }

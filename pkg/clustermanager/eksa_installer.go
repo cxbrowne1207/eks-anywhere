@@ -60,18 +60,18 @@ func WithEKSAInstallerNoTimeouts() EKSAInstallerOpt {
 }
 
 // Install configures and applies eks-a components in a cluster accordingly to a spec.
-func (i *EKSAInstaller) Install(ctx context.Context, log logr.Logger, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, spec *cluster.Spec) error {
-	if err := i.createEKSAComponents(ctx, log, cluster, managementComponents, spec); err != nil {
+func (i *EKSAInstaller) Install(ctx context.Context, log logr.Logger, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
+	if err := i.createEKSAComponents(ctx, log, cluster, clusterSpec.ManagementSpec); err != nil {
 		return fmt.Errorf("applying EKSA components: %v", err)
 	}
 
-	if err := i.applyBundles(ctx, log, cluster, spec); err != nil {
+	if err := i.applyBundles(ctx, log, cluster, clusterSpec.ManagementSpec); err != nil {
 		return fmt.Errorf("applying EKSA bundles: %v", err)
 	}
 
 	// We need to update this config map with the new upgrader images whenever we
 	// apply a new Bundles object to the cluster in order to support in-place upgrades.
-	cm, err := i.getUpgraderImagesFromBundle(ctx, cluster, spec)
+	cm, err := i.getUpgraderImagesFromBundle(ctx, cluster, clusterSpec)
 	if err != nil {
 		return fmt.Errorf("getting upgrader images from bundle: %v", err)
 	}
@@ -80,16 +80,16 @@ func (i *EKSAInstaller) Install(ctx context.Context, log logr.Logger, cluster *t
 		return fmt.Errorf("applying upgrader images config map: %v", err)
 	}
 
-	if err := i.applyReleases(ctx, log, cluster, spec); err != nil {
+	if err := i.applyReleases(ctx, log, cluster, clusterSpec); err != nil {
 		return fmt.Errorf("applying EKSA releases: %v", err)
 	}
 
 	return nil
 }
 
-func (i *EKSAInstaller) getUpgraderImagesFromBundle(ctx context.Context, cluster *types.Cluster, cl *cluster.Spec) (*corev1.ConfigMap, error) {
+func (i *EKSAInstaller) getUpgraderImagesFromBundle(ctx context.Context, cluster *types.Cluster, clusterSpec *cluster.Spec) (*corev1.ConfigMap, error) {
 	upgraderImages := make(map[string]string)
-	for _, versionBundle := range cl.Bundles.Spec.VersionsBundles {
+	for _, versionBundle := range clusterSpec.Bundles.Spec.VersionsBundles {
 		eksD := versionBundle.EksD
 		eksdVersion := fmt.Sprintf("%s-eks-%s-%s", eksD.KubeVersion, eksD.ReleaseChannel, strings.Split(eksD.Name, "-")[4])
 		if _, ok := upgraderImages[eksdVersion]; !ok {
@@ -114,21 +114,21 @@ func (i *EKSAInstaller) getUpgraderImagesFromBundle(ctx context.Context, cluster
 
 // Upgrade re-installs the eksa components in a cluster if the VersionBundle defined in the
 // new spec has a different eks-a components version. Workload clusters are ignored.
-func (i *EKSAInstaller) Upgrade(ctx context.Context, log logr.Logger, c *types.Cluster, currentManagementComponents, newManagementComponents *cluster.ManagementComponents, newSpec *cluster.Spec) (*types.ChangeDiff, error) {
+func (i *EKSAInstaller) Upgrade(ctx context.Context, log logr.Logger, c *types.Cluster, currentManagementSpec, newManagementSpec *cluster.ManagementSpec) (*types.ChangeDiff, error) {
 	log.V(1).Info("Checking for EKS-A components upgrade")
-	if !newSpec.Cluster.IsSelfManaged() {
+	if !newManagementSpec.Cluster.IsSelfManaged() {
 		log.V(1).Info("Skipping EKS-A components upgrade, not a self-managed cluster")
 		return nil, nil
 	}
-	changeDiff := EksaChangeDiff(currentManagementComponents, newManagementComponents)
+	changeDiff := EksaChangeDiff(currentManagementSpec.ManagementComponents, newManagementSpec.ManagementComponents)
 	if changeDiff == nil {
 		log.V(1).Info("Nothing to upgrade for controller and CRDs")
 		return nil, nil
 	}
 	log.V(1).Info("Starting EKS-A components upgrade")
-	oldVersion := currentManagementComponents.Eksa.Version
-	newVersion := newManagementComponents.Eksa.Version
-	if err := i.createEKSAComponents(ctx, log, c, newManagementComponents, newSpec); err != nil {
+	oldVersion := currentManagementSpec.ManagementComponents.Eksa.Version
+	newVersion := newManagementSpec.ManagementComponents.Eksa.Version
+	if err := i.createEKSAComponents(ctx, log, c, newManagementSpec); err != nil {
 		return nil, fmt.Errorf("upgrading EKS-A components from version %v to version %v: %v", oldVersion, newVersion, err)
 	}
 
@@ -136,9 +136,9 @@ func (i *EKSAInstaller) Upgrade(ctx context.Context, log logr.Logger, c *types.C
 }
 
 // createEKSAComponents creates eksa components and applies the objects to the cluster.
-func (i *EKSAInstaller) createEKSAComponents(ctx context.Context, log logr.Logger, cluster *types.Cluster, managementComponents *cluster.ManagementComponents, spec *cluster.Spec) error {
+func (i *EKSAInstaller) createEKSAComponents(ctx context.Context, log logr.Logger, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
 	generator := EKSAComponentGenerator{log: log, reader: i.reader}
-	components, err := generator.buildEKSAComponentsSpec(managementComponents, spec)
+	components, err := generator.buildEKSAComponentsSpec(managementSpec)
 	if err != nil {
 		return err
 	}
@@ -163,8 +163,8 @@ func (i *EKSAInstaller) createEKSAComponents(ctx context.Context, log logr.Logge
 }
 
 // applyBundles applies the bundles to the cluster.
-func (i *EKSAInstaller) applyBundles(ctx context.Context, log logr.Logger, cluster *types.Cluster, spec *cluster.Spec) error {
-	bundleObj, err := yaml.Marshal(spec.Bundles)
+func (i *EKSAInstaller) applyBundles(ctx context.Context, log logr.Logger, cluster *types.Cluster, managementSpec *cluster.ManagementSpec) error {
+	bundleObj, err := yaml.Marshal(managementSpec.Bundles)
 	if err != nil {
 		return fmt.Errorf("outputting bundle yaml: %v", err)
 	}
@@ -178,8 +178,8 @@ func (i *EKSAInstaller) applyBundles(ctx context.Context, log logr.Logger, clust
 }
 
 // applyReleases applies the releases to the cluster.
-func (i *EKSAInstaller) applyReleases(ctx context.Context, log logr.Logger, cluster *types.Cluster, spec *cluster.Spec) error {
-	releaseObj, err := yaml.Marshal(spec.EKSARelease)
+func (i *EKSAInstaller) applyReleases(ctx context.Context, log logr.Logger, cluster *types.Cluster, clusterSpec *cluster.Spec) error {
+	releaseObj, err := yaml.Marshal(clusterSpec.EKSARelease)
 	if err != nil {
 		return fmt.Errorf("outputting release yaml: %v", err)
 	}
@@ -198,28 +198,28 @@ type EKSAComponentGenerator struct {
 	reader manifests.FileReader
 }
 
-func (g *EKSAComponentGenerator) buildEKSAComponentsSpec(managamentComponents *cluster.ManagementComponents, spec *cluster.Spec) (*eksaComponents, error) {
-	components, err := g.parseEKSAComponentsSpec(managamentComponents)
+func (g *EKSAComponentGenerator) buildEKSAComponentsSpec(managementSpec *cluster.ManagementSpec) (*eksaComponents, error) {
+	components, err := g.parseEKSAComponentsSpec(managementSpec.ManagementComponents)
 	if err != nil {
 		return nil, err
 	}
 
-	g.configureEKSAComponents(components, spec)
+	g.configureEKSAComponents(components, managementSpec)
 
 	return components, nil
 }
 
-func (g *EKSAComponentGenerator) configureEKSAComponents(c *eksaComponents, spec *cluster.Spec) {
+func (g *EKSAComponentGenerator) configureEKSAComponents(c *eksaComponents, managementSpec *cluster.ManagementSpec) {
 	// TODO(g-gaston): we should do this with a custom ControllerManagerConfig.
 	// This requires wider changes in the controller manager setup and config manifest,
 	// so leaving this for later.
-	setManagerFlags(c.deployment, spec)
-	setManagerEnvVars(c.deployment, spec)
+	setManagerFlags(c.deployment, managementSpec)
+	setManagerEnvVars(c.deployment, managementSpec)
 }
 
-func setManagerFlags(d *appsv1.Deployment, spec *cluster.Spec) {
+func setManagerFlags(d *appsv1.Deployment, managementSpec *cluster.ManagementSpec) {
 	gates := []string{}
-	for _, g := range managerEnabledGates(spec) {
+	for _, g := range managerEnabledGates(managementSpec) {
 		gates = append(gates, fmt.Sprintf("%s=true", g))
 	}
 
@@ -231,7 +231,7 @@ func setManagerFlags(d *appsv1.Deployment, spec *cluster.Spec) {
 	d.Spec.Template.Spec.Containers[0].Args = args
 }
 
-func setManagerEnvVars(d *appsv1.Deployment, spec *cluster.Spec) {
+func setManagerEnvVars(d *appsv1.Deployment, spec *cluster.ManagementSpec) {
 	envVars := d.Spec.Template.Spec.Containers[0].Env
 	proxy := spec.Cluster.ProxyConfiguration()
 	if proxy != nil {
@@ -250,7 +250,7 @@ func setManagerEnvVars(d *appsv1.Deployment, spec *cluster.Spec) {
 	d.Spec.Template.Spec.Containers[0].Env = envVars
 }
 
-func managerEnabledGates(spec *cluster.Spec) []string {
+func managerEnabledGates(_ *cluster.ManagementSpec) []string {
 	return nil
 }
 

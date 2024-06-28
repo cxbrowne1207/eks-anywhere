@@ -226,7 +226,7 @@ func (c *upgradeManagementTestSetup) expectMachineConfigs() {
 func (c *upgradeManagementTestSetup) expectInstallEksdManifest(err error) {
 	gomock.InOrder(
 		c.eksdInstaller.EXPECT().InstallEksdManifest(
-			c.ctx, c.newClusterSpec, c.managementCluster,
+			c.ctx, c.newClusterSpec.Bundles, c.managementCluster,
 		).Return(err),
 	)
 }
@@ -234,7 +234,7 @@ func (c *upgradeManagementTestSetup) expectInstallEksdManifest(err error) {
 func (c *upgradeManagementTestSetup) expectApplyBundles(err error) {
 	gomock.InOrder(
 		c.clusterManager.EXPECT().ApplyBundles(
-			c.ctx, c.newClusterSpec, c.managementCluster,
+			c.ctx, c.newClusterSpec.Bundles, c.managementCluster,
 		).Return(err),
 	)
 }
@@ -242,7 +242,7 @@ func (c *upgradeManagementTestSetup) expectApplyBundles(err error) {
 func (c *upgradeManagementTestSetup) expectApplyReleases(err error) {
 	gomock.InOrder(
 		c.clusterManager.EXPECT().ApplyReleases(
-			c.ctx, c.newClusterSpec, c.managementCluster,
+			c.ctx, c.newClusterSpec.EKSARelease, c.managementCluster,
 		).Return(err),
 	)
 }

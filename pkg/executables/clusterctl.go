@@ -207,14 +207,14 @@ func (c *Clusterctl) GetWorkloadKubeconfig(ctx context.Context, clusterName stri
 }
 
 // InitInfrastructure initializes the infrastructure for the cluster using clusterctl.
-func (c *Clusterctl) InitInfrastructure(ctx context.Context, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, cluster *types.Cluster, provider providers.Provider) error {
+func (c *Clusterctl) InitInfrastructure(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster, provider providers.Provider) error {
 	if cluster == nil {
 		return fmt.Errorf("invalid cluster (nil)")
 	}
 	if cluster.Name == "" {
 		return fmt.Errorf("invalid cluster name '%s'", cluster.Name)
 	}
-	clusterctlConfig, err := c.buildConfig(managementComponents, cluster.Name, provider)
+	clusterctlConfig, err := c.buildConfig(managementSpec.ManagementComponents, cluster.Name, provider)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (c *Clusterctl) InitInfrastructure(ctx context.Context, managementComponent
 		"--core", clusterctlConfig.coreVersion,
 		"--bootstrap", clusterctlConfig.bootstrapVersion,
 		"--control-plane", clusterctlConfig.controlPlaneVersion,
-		"--infrastructure", fmt.Sprintf("%s:%s", provider.Name(), provider.Version(managementComponents)),
+		"--infrastructure", fmt.Sprintf("%s:%s", provider.Name(), provider.Version(managementSpec.ManagementComponents)),
 		"--config", clusterctlConfig.configFile,
 		"--bootstrap", clusterctlConfig.etcdadmBootstrapVersion,
 		"--bootstrap", clusterctlConfig.etcdadmControllerVersion,
@@ -234,7 +234,7 @@ func (c *Clusterctl) InitInfrastructure(ctx context.Context, managementComponent
 		params = append(params, "--kubeconfig", cluster.KubeconfigFile)
 	}
 
-	envMap, err := provider.EnvMap(managementComponents, clusterSpec)
+	envMap, err := provider.EnvMap(managementSpec)
 	if err != nil {
 		return err
 	}
@@ -343,8 +343,8 @@ var providerNamespaces = map[string]string{
 }
 
 // Upgrade executes an upgrade of the cluster to the new management components and the spec.
-func (c *Clusterctl) Upgrade(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, managementComponents *cluster.ManagementComponents, newSpec *cluster.Spec, changeDiff *clusterapi.CAPIChangeDiff) error {
-	clusterctlConfig, err := c.buildConfig(managementComponents, managementCluster.Name, provider)
+func (c *Clusterctl) Upgrade(ctx context.Context, managementCluster *types.Cluster, provider providers.Provider, managementSpec *cluster.ManagementSpec, changeDiff *clusterapi.CAPIChangeDiff) error {
+	clusterctlConfig, err := c.buildConfig(managementSpec.ManagementComponents, managementCluster.Name, provider)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func (c *Clusterctl) Upgrade(ctx context.Context, managementCluster *types.Clust
 		upgradeCommand = append(upgradeCommand, "--bootstrap", newBootstrapProvider)
 	}
 
-	providerEnvMap, err := provider.EnvMap(managementComponents, newSpec)
+	providerEnvMap, err := provider.EnvMap(managementSpec)
 	if err != nil {
 		return fmt.Errorf("failed generating provider env map for clusterctl upgrade: %v", err)
 	}
@@ -386,7 +386,7 @@ func (c *Clusterctl) Upgrade(ctx context.Context, managementCluster *types.Clust
 }
 
 // InstallEtcdadmProviders installs the etcdadm providers for the cluster using clusterctl.
-func (c *Clusterctl) InstallEtcdadmProviders(ctx context.Context, managementComponents *cluster.ManagementComponents, clusterSpec *cluster.Spec, cluster *types.Cluster, infraProvider providers.Provider, installProviders []string) error {
+func (c *Clusterctl) InstallEtcdadmProviders(ctx context.Context, managementSpec *cluster.ManagementSpec, cluster *types.Cluster, infraProvider providers.Provider, installProviders []string) error {
 	if cluster == nil {
 		return fmt.Errorf("invalid cluster (nil)")
 	}
@@ -394,7 +394,7 @@ func (c *Clusterctl) InstallEtcdadmProviders(ctx context.Context, managementComp
 		return fmt.Errorf("invalid cluster name '%s'", cluster.Name)
 	}
 
-	clusterctlConfig, err := c.buildConfig(managementComponents, cluster.Name, infraProvider)
+	clusterctlConfig, err := c.buildConfig(managementSpec.ManagementComponents, cluster.Name, infraProvider)
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func (c *Clusterctl) InstallEtcdadmProviders(ctx context.Context, managementComp
 		params = append(params, "--kubeconfig", cluster.KubeconfigFile)
 	}
 
-	envMap, err := infraProvider.EnvMap(managementComponents, clusterSpec)
+	envMap, err := infraProvider.EnvMap(managementSpec)
 	if err != nil {
 		return err
 	}

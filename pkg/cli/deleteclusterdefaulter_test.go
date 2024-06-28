@@ -20,8 +20,10 @@ func TestNewDeleteClusterDefaulter(t *testing.T) {
 	c := baseCluster()
 
 	clusterSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: c,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: c,
+			},
 		},
 	}
 

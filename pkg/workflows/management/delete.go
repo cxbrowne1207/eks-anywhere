@@ -56,6 +56,7 @@ func (c *Delete) Run(ctx context.Context, workload *types.Cluster, clusterSpec *
 		Writer:          c.writer,
 		ClusterManager:  c.clusterManager,
 		ClusterSpec:     clusterSpec,
+		ManagementSpec:  cluster.ManagementSpecFromClusterSpec(clusterSpec),
 		WorkloadCluster: workload,
 		GitOpsManager:   c.gitopsManager,
 		ClusterDeleter:  c.clusterDeleter,

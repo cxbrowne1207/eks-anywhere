@@ -51,13 +51,15 @@ func TestInstallAWSIAMAuth(t *testing.T) {
 	)
 
 	spec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: &v1alpha1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-cluster",
-				},
-				Spec: v1alpha1.ClusterSpec{
-					KubernetesVersion: v1alpha1.Kube124,
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: &v1alpha1.Cluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cluster",
+					},
+					Spec: v1alpha1.ClusterSpec{
+						KubernetesVersion: v1alpha1.Kube124,
+					},
 				},
 			},
 		},
@@ -144,13 +146,15 @@ func TestInstallAWSIAMAuthErrors(t *testing.T) {
 			tc.ConfigureMocks(errors.New(tc.Name), k8s, writer)
 
 			spec := &cluster.Spec{
-				Config: &cluster.Config{
-					Cluster: &v1alpha1.Cluster{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test-cluster",
-						},
-						Spec: v1alpha1.ClusterSpec{
-							KubernetesVersion: v1alpha1.Kube124,
+				ManagementSpec: &cluster.ManagementSpec{
+					Config: &cluster.Config{
+						Cluster: &v1alpha1.Cluster{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "test-cluster",
+							},
+							Spec: v1alpha1.ClusterSpec{
+								KubernetesVersion: v1alpha1.Kube124,
+							},
 						},
 					},
 				},
@@ -291,13 +295,16 @@ func TestUpgradeAWSIAMAuth(t *testing.T) {
 	installer := awsiamauth.NewInstaller(certs, clusterID, k8s, writer, kwriter)
 
 	spec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: &v1alpha1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-cluster",
-				},
-				Spec: v1alpha1.ClusterSpec{
-					KubernetesVersion: v1alpha1.Kube123,
+		ManagementSpec: &cluster.ManagementSpec{
+
+			Config: &cluster.Config{
+				Cluster: &v1alpha1.Cluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-cluster",
+					},
+					Spec: v1alpha1.ClusterSpec{
+						KubernetesVersion: v1alpha1.Kube123,
+					},
 				},
 			},
 		},

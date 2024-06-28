@@ -405,13 +405,15 @@ func TestFactoryBuildWithRegistryMirror(t *testing.T) {
 
 func TestFactoryBuildWithPackageInstaller(t *testing.T) {
 	spec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: &anywherev1.Cluster{
-				ObjectMeta: v1.ObjectMeta{
-					Name: "test-cluster",
-				},
-				Spec: anywherev1.ClusterSpec{
-					KubernetesVersion: "1.19",
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: &anywherev1.Cluster{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "test-cluster",
+					},
+					Spec: anywherev1.ClusterSpec{
+						KubernetesVersion: "1.19",
+					},
 				},
 			},
 		},
@@ -465,16 +467,18 @@ func TestFactoryBuildWithPackageClient(t *testing.T) {
 
 func TestFactoryBuildWithPackageControllerClientNoProxy(t *testing.T) {
 	spec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: &anywherev1.Cluster{
-				ObjectMeta: v1.ObjectMeta{
-					Name: "test-cluster",
-				},
-				Spec: anywherev1.ClusterSpec{
-					ManagementCluster: anywherev1.ManagementCluster{
-						Name: "mgmt-1",
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: &anywherev1.Cluster{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "test-cluster",
 					},
-					KubernetesVersion: "1.19",
+					Spec: anywherev1.ClusterSpec{
+						ManagementCluster: anywherev1.ManagementCluster{
+							Name: "mgmt-1",
+						},
+						KubernetesVersion: "1.19",
+					},
 				},
 			},
 		},
@@ -506,18 +510,20 @@ func TestFactoryBuildWithPackageControllerClientNoProxy(t *testing.T) {
 
 func TestFactoryBuildWithPackageControllerClientProxy(t *testing.T) {
 	spec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster: &anywherev1.Cluster{
-				ObjectMeta: v1.ObjectMeta{
-					Name: "test-cluster",
-				},
-				Spec: anywherev1.ClusterSpec{
-					ProxyConfiguration: &anywherev1.ProxyConfiguration{
-						HttpProxy:  "1.1.1.1",
-						HttpsProxy: "1.1.1.1",
-						NoProxy:    []string{"1.1.1.1"},
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster: &anywherev1.Cluster{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "test-cluster",
 					},
-					KubernetesVersion: "1.19",
+					Spec: anywherev1.ClusterSpec{
+						ProxyConfiguration: &anywherev1.ProxyConfiguration{
+							HttpProxy:  "1.1.1.1",
+							HttpsProxy: "1.1.1.1",
+							NoProxy:    []string{"1.1.1.1"},
+						},
+						KubernetesVersion: "1.19",
+					},
 				},
 			},
 		},

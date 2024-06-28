@@ -143,22 +143,30 @@ func (tt *buildSpecTest) expectGetEksd() {
 	)
 }
 
+func (tt *buildSpecTest) expectGetManagementComponents() {
+	tt.expectGetEKSARelease()
+	tt.expectGetBundles()
+}
+
 func TestBuildSpec(t *testing.T) {
 	tt := newBuildSpecTest(t)
 	tt.expectGetEKSARelease()
 	tt.expectGetBundles()
 	tt.expectGetEksd()
+	tt.expectGetManagementComponents()
 
 	_, kubeDistro := wantKubeDistroForEksdRelease()
 	kubeDistro.EKSD.Channel = "1-22"
 
 	wantSpec := &cluster.Spec{
-		Config: &cluster.Config{
-			Cluster:       tt.cluster,
-			OIDCConfigs:   map[string]*anywherev1.OIDCConfig{},
-			AWSIAMConfigs: map[string]*anywherev1.AWSIamConfig{},
+		ManagementSpec: &cluster.ManagementSpec{
+			Config: &cluster.Config{
+				Cluster:       tt.cluster,
+				OIDCConfigs:   map[string]*anywherev1.OIDCConfig{},
+				AWSIAMConfigs: map[string]*anywherev1.AWSIamConfig{},
+			},
+			Bundles: tt.bundles,
 		},
-		Bundles: tt.bundles,
 		VersionsBundles: map[anywherev1.KubernetesVersion]*cluster.VersionsBundle{
 			anywherev1.Kube123: {
 				VersionsBundle: &tt.bundles.Spec.VersionsBundles[0],
@@ -276,6 +284,7 @@ func TestBuildSpecInitError(t *testing.T) {
 	tt.expectGetEKSARelease()
 	tt.expectGetBundles()
 	tt.expectGetEksd()
+	tt.expectGetManagementComponents()
 
 	_, err := cluster.BuildSpec(tt.ctx, tt.client, tt.cluster)
 	tt.Expect(err).To(MatchError(ContainSubstring("is no present in eksd release")))

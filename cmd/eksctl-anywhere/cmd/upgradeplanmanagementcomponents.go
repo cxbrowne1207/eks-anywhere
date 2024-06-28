@@ -101,21 +101,12 @@ func (uc *upgradeClusterOptions) upgradePlanManagementComponents(ctx context.Con
 }
 
 func getManagementComponentsChangeDiffs(ctx context.Context, clientFactory interfaces.ClientFactory, managementCluster *types.Cluster, currentSpec *cluster.Spec, newClusterSpec *cluster.Spec, provider providers.Provider) (*types.ChangeDiff, error) {
-	client, err := clientFactory.BuildClientFromKubeconfig(managementCluster.KubeconfigFile)
-	if err != nil {
-		return nil, err
-	}
-
-	currentManagementComponents, err := cluster.GetManagementComponents(ctx, client, currentSpec.Cluster)
-	if err != nil {
-		return nil, err
-	}
-
 	componentChangeDiffs := &types.ChangeDiff{}
-	newManagementComponents := cluster.ManagementComponentsFromBundles(newClusterSpec.Bundles)
-	componentChangeDiffs.Append(eksaupgrader.EksaChangeDiff(currentManagementComponents, newManagementComponents))
-	componentChangeDiffs.Append(fluxupgrader.ChangeDiff(currentManagementComponents, newManagementComponents, currentSpec, newClusterSpec))
-	componentChangeDiffs.Append(capiupgrader.ChangeDiff(currentManagementComponents, newManagementComponents, provider))
+	componentChangeDiffs.Append(eksaupgrader.EksaChangeDiff(currentSpec.ManagementComponents, newClusterSpec.ManagementComponents))
+	if currentSpec.Cluster.Spec.GitOpsRef != nil {
+		componentChangeDiffs.Append(fluxupgrader.ChangeDiff(currentSpec.ManagementComponents, newClusterSpec.ManagementComponents))
+	}
+	componentChangeDiffs.Append(capiupgrader.ChangeDiff(currentSpec.ManagementComponents, newClusterSpec.ManagementComponents, provider))
 
 	return componentChangeDiffs, nil
 }

@@ -59,6 +59,7 @@ func (c *Upgrade) Run(ctx context.Context, clusterSpec *cluster.Spec, management
 		ClusterManager:    c.clusterManager,
 		GitOpsManager:     c.gitOpsManager,
 		ManagementCluster: managementCluster,
+		ManagementSpec:    cluster.ManagementSpecFromClusterSpec(clusterSpec),
 		ClusterSpec:       clusterSpec,
 		Validations:       validator,
 		Writer:            c.writer,
